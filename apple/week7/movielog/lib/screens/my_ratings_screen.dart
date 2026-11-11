@@ -27,35 +27,74 @@ import '../widgets/tmdb_poster_image.dart';
 /// - 수정: 기존 별점·코멘트를 채운 [RatingDialog]
 /// - 삭제: 되돌릴 수 없으므로 확인 Dialog를 거쳐서만 요청
 /// - 저장 성공 후 재조회만 실패하면 [MyRatingsViewModel.refreshWarning]과 조회 다시 시도
+///
+/// W7-CH 다중 삭제 — 카드를 길게 누르면 선택 모드가 됩니다.
+/// - 위: "N개 선택됨 / 취소", 아래: "선택한 N개 삭제"
+/// - 삭제 중에는 [Stack]으로 화면 전체를 반투명 배경 + 로딩으로 덮어 터치를 막고,
+///   [PopScope]로 뒤로가기도 막습니다. 선택 모드에서 뒤로가기는 선택만 취소합니다.
 class MyRatingsScreen extends StatelessWidget {
   const MyRatingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: const CommonAppBar(
-        title: '내가 등록한 평점',
-        titleStyle: AppTheme.appBarTitleBold,
-      ),
-      body: Consumer<MyRatingsViewModel>(
-        builder: (context, viewModel, child) {
-          return switch (viewModel.status) {
-            MyRatingsLoadStatus.idle ||
-            MyRatingsLoadStatus.loading => const MovieListLoading(),
-            MyRatingsLoadStatus.error => MovieListError(
-              // 저장 후 재조회 실패면 "저장은 완료됨"을 함께 알려 조회만 다시 하게 합니다.
-              message: viewModel.refreshWarning ?? viewModel.message,
-              onRetry: viewModel.load,
-            ),
-            MyRatingsLoadStatus.empty => const _MyRatingsEmpty(),
-            MyRatingsLoadStatus.success => _MyRatingsList(
-              ratings: viewModel.ratings,
-              canModify: viewModel.canModify,
-            ),
-          };
-        },
-      ),
+    return Consumer<MyRatingsViewModel>(
+      builder: (context, viewModel, child) {
+        final selecting =
+            viewModel.isSelecting &&
+            viewModel.status == MyRatingsLoadStatus.success;
+
+        return PopScope(
+          canPop: !viewModel.isSelecting && !viewModel.isBulkDeleting,
+          onPopInvokedWithResult: (didPop, result) {
+            if (!didPop && !viewModel.isBulkDeleting) {
+              viewModel.cancelSelection();
+            }
+          },
+          child: Stack(
+            children: [
+              Scaffold(
+                appBar: const CommonAppBar(
+                  title: '내가 등록한 평점',
+                  titleStyle: AppTheme.appBarTitleBold,
+                ),
+                body: _body(context, viewModel, selecting),
+                bottomNavigationBar: selecting
+                    ? _BulkDeleteBar(
+                        count: viewModel.selectedIds.length,
+                        onPressed: () => onBulkDeletePressed(context),
+                      )
+                    : null,
+              ),
+              // 다중 삭제 중 — 화면 전체(헤더 포함)를 덮어 다른 동작을 막습니다.
+              if (viewModel.isBulkDeleting) const _BlockingIndicator(),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  Widget _body(
+    BuildContext context,
+    MyRatingsViewModel viewModel,
+    bool selecting,
+  ) {
+    if (selecting) return _SelectableRatingsList(viewModel: viewModel);
+    return switch (viewModel.status) {
+      MyRatingsLoadStatus.idle ||
+      MyRatingsLoadStatus.loading => const MovieListLoading(),
+      MyRatingsLoadStatus.error => MovieListError(
+        // 저장 후 재조회 실패면 "저장은 완료됨"을 함께 알려 조회만 다시 하게 합니다.
+        message: viewModel.refreshWarning ?? viewModel.message,
+        onRetry: viewModel.load,
+      ),
+      MyRatingsLoadStatus.empty => const _MyRatingsEmpty(),
+      MyRatingsLoadStatus.success => _MyRatingsList(
+        ratings: viewModel.ratings,
+        canModify: viewModel.canModify,
+        onLongPress: viewModel.startSelection,
+      ),
+    };
   }
 }
 
@@ -70,10 +109,17 @@ class _MyRatingsEmpty extends StatelessWidget {
 
 /// 평점 카드 목록 — 헤더 아래 32, 좌우 20, 카드 사이 18 (W6-02)
 class _MyRatingsList extends StatelessWidget {
-  const _MyRatingsList({required this.ratings, required this.canModify});
+  const _MyRatingsList({
+    required this.ratings,
+    required this.canModify,
+    required this.onLongPress,
+  });
 
   final List<RatingWithMovie> ratings;
   final bool canModify;
+
+  /// 길게 누르면 그 평점을 선택한 채로 다중 삭제 모드를 시작합니다.
+  final ValueChanged<int> onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -83,13 +129,18 @@ class _MyRatingsList extends StatelessWidget {
       separatorBuilder: (context, index) => const SizedBox(height: 18),
       itemBuilder: (context, index) {
         final entry = ratings[index];
-        return _RatingCard(
+        final card = _RatingCard(
           entry: entry,
           // 목록 항목은 RatingWithMovie — 수정·삭제에는 서버 평점(entry.rating)을 넘깁니다.
           onEdit: canModify ? () => onEditPressed(context, entry.rating) : null,
           onDelete: canModify
               ? () => onDeletePressed(context, entry.rating)
               : null,
+        );
+        if (!canModify) return card;
+        return GestureDetector(
+          onLongPress: () => onLongPress(entry.rating.ratingId),
+          child: card,
         );
       },
     );
@@ -311,9 +362,16 @@ void _showSavedMessage(
 /// 삭제 요청 중에는 버튼 로딩과 [PopScope]로 Dialog가 닫히지 않게 합니다.
 /// 실패하면 닫지 않고 서버 문구를 보여줘 다시 시도하거나 취소할 수 있게 둡니다.
 class _DeleteRatingDialog extends StatefulWidget {
-  const _DeleteRatingDialog({required this.onConfirm});
+  const _DeleteRatingDialog({
+    this.title = '평점을 삭제할까요?',
+    required this.onConfirm,
+  });
 
-  final Future<void> Function() onConfirm;
+  final String title;
+
+  /// null이면 요청 없이 확인 결과(true)만 돌려줍니다.
+  /// 다중 삭제는 화면 전체 로딩으로 진행하므로 Dialog 안에서 요청하지 않습니다.
+  final Future<void> Function()? onConfirm;
 
   @override
   State<_DeleteRatingDialog> createState() => _DeleteRatingDialogState();
@@ -324,12 +382,17 @@ class _DeleteRatingDialogState extends State<_DeleteRatingDialog> {
   String? _errorText;
 
   Future<void> _onConfirm() async {
+    final onConfirm = widget.onConfirm;
+    if (onConfirm == null) {
+      Navigator.pop(context, true);
+      return;
+    }
     setState(() {
       _isDeleting = true;
       _errorText = null;
     });
     try {
-      await widget.onConfirm();
+      await onConfirm();
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (error) {
@@ -361,11 +424,11 @@ class _DeleteRatingDialogState extends State<_DeleteRatingDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               // 제목 — 높이 27, Manrope 700 / 20, #25232A
-              const SizedBox(
+              SizedBox(
                 height: 27,
                 child: Center(
                   child: Text(
-                    '평점을 삭제할까요?',
+                    widget.title,
                     textAlign: TextAlign.center,
                     style: AppTheme.dialogTitle,
                   ),
@@ -416,6 +479,222 @@ class _DeleteRatingDialogState extends State<_DeleteRatingDialog> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 다중 삭제 — 확인 Dialog를 거친 뒤 화면 전체 로딩으로 하나씩 삭제합니다.
+Future<void> onBulkDeletePressed(BuildContext context) async {
+  final viewModel = context.read<MyRatingsViewModel>();
+  final total = viewModel.selectedIds.length;
+  if (total == 0) return;
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) =>
+        _DeleteRatingDialog(title: '선택한 $total개 평점을 삭제할까요?', onConfirm: null),
+  );
+  if (!context.mounted || confirmed != true) return;
+
+  final failed = await viewModel.deleteSelected();
+  if (!context.mounted) return;
+  if (failed == 0) {
+    _showSavedMessage(context, viewModel, '$total개 평점을 삭제했습니다.');
+    return;
+  }
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text('$total개 중 $failed개를 삭제하지 못했습니다. 선택된 평점을 다시 삭제해 주세요.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+}
+
+/// 선택 모드 목록 (W7-CH) — 위에 "N개 선택됨 / 취소", 카드마다 체크박스
+class _SelectableRatingsList extends StatelessWidget {
+  const _SelectableRatingsList({required this.viewModel});
+
+  final MyRatingsViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratings = viewModel.ratings;
+    final selected = viewModel.selectedIds;
+    const headerStyle = TextStyle(
+      fontSize: 13,
+      height: 1,
+      fontWeight: FontWeight.w700,
+      color: AppColors.primary,
+    );
+
+    return Column(
+      children: [
+        // N개 선택됨 / 취소 — 좌우 22, 헤더 아래 약 38
+        Padding(
+          padding: const EdgeInsets.fromLTRB(22, 22, 10, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text('${selected.length}개 선택됨', style: headerStyle),
+              ),
+              TextButton(
+                onPressed: viewModel.cancelSelection,
+                style: TextButton.styleFrom(textStyle: headerStyle),
+                child: const Text('취소'),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            itemCount: ratings.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 18),
+            itemBuilder: (context, index) {
+              final entry = ratings[index];
+              final id = entry.rating.ratingId;
+              return _SelectableRatingCard(
+                entry: entry,
+                selected: selected.contains(id),
+                onTap: () => viewModel.toggleSelection(id),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 선택 모드 카드 — 높이 124, 테두리는 평점 카드(W6-02)와 같음
+/// 체크박스 26 (왼쪽 16) + "영화 제목 · 별점 N" + 후기
+class _SelectableRatingCard extends StatelessWidget {
+  const _SelectableRatingCard({
+    required this.entry,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final RatingWithMovie entry;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final rating = entry.rating;
+    final title = entry.movie?.title ?? '영화 #${rating.movieId}';
+    final comment = rating.comment;
+
+    return Semantics(
+      checked: selected,
+      child: Material(
+        color: AppColors.ratingCardBackground,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppColors.ratingCardBorder, width: 2),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 124),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: AppTheme.checkboxSize,
+                    height: AppTheme.checkboxSize,
+                    child: Checkbox(value: selected, onChanged: (_) => onTap()),
+                  ),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$title · 별점 ${rating.score}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.ratingCardTitle,
+                        ),
+                        if (comment != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            comment,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTheme.ratingCardBody,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 하단 "선택한 N개 삭제" — 높이 48 pill, 좌우 22. 선택이 없으면 비활성
+class _BulkDeleteBar extends StatelessWidget {
+  const _BulkDeleteBar({required this.count, required this.onPressed});
+
+  final int count;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(22, 12, 22, 16),
+        child: DialogActionButton(
+          label: '선택한 $count개 삭제',
+          height: 48,
+          onPressed: count > 0 ? onPressed : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// 다중 삭제 중 화면 전체를 덮는 로딩 (W7-CH Stack 인디케이터)
+///
+/// [ModalBarrier]가 아래 화면의 터치를 모두 막고, 가운데에 흰 로딩 표시를 둡니다.
+class _BlockingIndicator extends StatelessWidget {
+  const _BlockingIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        ModalBarrier(
+          dismissible: false,
+          color: Colors.black.withValues(alpha: 0.32),
+        ),
+        Center(
+          child: Semantics(
+            label: '삭제 중',
+            child: const SizedBox(
+              width: 44,
+              height: 44,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

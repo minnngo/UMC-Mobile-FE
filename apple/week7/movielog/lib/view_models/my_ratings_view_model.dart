@@ -24,6 +24,9 @@ enum MyRatingsLoadStatus { idle, loading, success, empty, error }
 /// 7주차 — 수정·삭제가 성공하면 목록을 다시 조회합니다.
 /// - 쓰기 실패: [WriteFailure]를 던져 Dialog가 실패로 처리 (입력 유지, 다시 시도)
 /// - 쓰기 성공 + 재조회 실패: 저장 성공으로 돌려주고 [refreshWarning]으로 조회만 다시 시도하게 안내
+///
+/// W7-CH 다중 삭제 — 선택 모드에서 고른 평점을 하나씩 DELETE한 뒤 목록을 한 번만 다시 조회합니다.
+/// 삭제 중에는 [isBulkDeleting]으로 화면 전체 입력을 막습니다.
 class MyRatingsViewModel extends ChangeNotifier {
   MyRatingsViewModel(
     this._service,
@@ -102,6 +105,82 @@ class MyRatingsViewModel extends ChangeNotifier {
       message = _loadFailedText;
     }
     if (!_disposed && version == _requestVersion) notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 다중 삭제 (W7-CH)
+  // ---------------------------------------------------------------------------
+
+  bool _isSelecting = false;
+  bool get isSelecting => _isSelecting;
+
+  final Set<int> _selectedIds = {};
+  Set<int> get selectedIds => Set.unmodifiable(_selectedIds);
+
+  /// 다중 삭제 요청 중 — 화면은 전체를 덮는 로딩으로 터치·뒤로가기를 막습니다.
+  bool isBulkDeleting = false;
+
+  /// 길게 누른 평점을 선택한 채로 선택 모드를 시작합니다.
+  void startSelection(int ratingId) {
+    if (!canModify || isBulkDeleting) return;
+    _isSelecting = true;
+    _selectedIds
+      ..clear()
+      ..add(ratingId);
+    notifyListeners();
+  }
+
+  void toggleSelection(int ratingId) {
+    if (!_isSelecting || isBulkDeleting) return;
+    if (!_selectedIds.remove(ratingId)) _selectedIds.add(ratingId);
+    notifyListeners();
+  }
+
+  void cancelSelection() {
+    if (isBulkDeleting) return;
+    _isSelecting = false;
+    _selectedIds.clear();
+    notifyListeners();
+  }
+
+  /// 선택한 평점을 순서대로 삭제하고 실패한 개수를 돌려줍니다.
+  ///
+  /// v6에는 여러 개를 한 번에 지우는 API가 없어 DELETE를 하나씩 보냅니다.
+  /// - 모두 성공: 선택 모드를 끝냅니다.
+  /// - 일부 실패: 실패한 평점만 선택된 채로 남겨 다시 시도할 수 있게 합니다.
+  /// - 한 개라도 서버 상태가 바뀌었으면 목록을 한 번만 다시 조회합니다.
+  Future<int> deleteSelected() async {
+    if (isBulkDeleting || _selectedIds.isEmpty) return 0;
+    isBulkDeleting = true;
+    notifyListeners();
+
+    final failedIds = <int>{};
+    var needsRefresh = false;
+    for (final ratingId in [..._selectedIds]) {
+      try {
+        await _service.deleteRating(memberId: memberId, ratingId: ratingId);
+        needsRefresh = true;
+      } on DioException catch (error) {
+        failedIds.add(ratingId);
+        if (shouldRefreshAfterRatingError(error)) needsRefresh = true;
+      } catch (_) {
+        failedIds.add(ratingId);
+      }
+      if (_disposed) return failedIds.length;
+    }
+
+    if (needsRefresh) await _refreshAfterWrite();
+    if (_disposed) return failedIds.length;
+
+    // 다시 조회한 목록에 남아 있는 실패 평점만 선택 상태로 둡니다.
+    final remaining = {for (final entry in ratings) entry.rating.ratingId};
+    _selectedIds
+      ..clear()
+      ..addAll(failedIds.where(remaining.contains));
+    _isSelecting = _selectedIds.isNotEmpty;
+    isBulkDeleting = false;
+    notifyListeners();
+    return failedIds.length;
   }
 
   /// 평점 수정 — PATCH. comment가 null이면 후기를 지우는 요청입니다.

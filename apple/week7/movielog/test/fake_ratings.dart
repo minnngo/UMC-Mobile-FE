@@ -46,6 +46,9 @@ class FakeRatingServer {
   /// 쓰기(POST·PATCH·DELETE) 실패 — 공통 오류 형식 응답
   FakeApiError? writeError;
 
+  /// 이 ratingId에 대한 쓰기만 500 공통 오류로 실패 — 다중 삭제 일부 실패 확인용
+  final Set<int> failingRatingIds = {};
+
   /// 모든 요청을 이 Future가 끝날 때까지 미룸
   Future<void>? gate;
 
@@ -117,6 +120,11 @@ class FakeRatingServer {
     }
 
     final ratingId = int.tryParse(options.path.split('/').last);
+    if (failingRatingIds.contains(ratingId)) {
+      return handler.reject(
+        badResponse(500, fakeCommonError('COMMON500', '서버 오류')),
+      );
+    }
     switch (options.method) {
       case 'POST':
         final body = options.data as Map<String, dynamic>;

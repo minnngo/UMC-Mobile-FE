@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -313,6 +315,138 @@ void main() {
       // 다시 시도는 GET만 보냅니다.
       expect(server.calls, ['GET /v6/members/42/ratings']);
       expect(find.text('수정'), findsOneWidget);
+    });
+  });
+
+  group('다중 삭제 (W7-CH)', () {
+    FakeRatingServer serverWithThree() => FakeRatingServer(
+      ratings: [
+        fakeRatingJson(ratingId: 3, movieId: 1, score: 5, comment: '좋은 영화였어요'),
+        fakeRatingJson(ratingId: 2, movieId: 2, score: 4, comment: '다시 봐도 좋아요'),
+        fakeRatingJson(ratingId: 1, movieId: 3, score: 3, comment: null),
+      ],
+    );
+
+    test('선택한 평점을 하나씩 DELETE하고 목록은 한 번만 다시 조회한다', () async {
+      final server = serverWithThree();
+      final viewModel = _viewModel(server, current: _memberId);
+      await viewModel.load();
+      server.calls.clear();
+
+      viewModel
+        ..startSelection(3)
+        ..toggleSelection(2);
+      expect(viewModel.selectedIds, {3, 2});
+
+      final failed = await viewModel.deleteSelected();
+
+      expect(failed, 0);
+      expect(server.calls, [
+        'DELETE /v6/members/42/ratings/3',
+        'DELETE /v6/members/42/ratings/2',
+        'GET /v6/members/42/ratings',
+      ]);
+      expect(viewModel.ratings.map((e) => e.rating.ratingId), [1]);
+      expect(viewModel.isSelecting, isFalse);
+      expect(viewModel.isBulkDeleting, isFalse);
+    });
+
+    test('본인 목록이 아니면 선택 모드를 시작하지 않는다', () async {
+      final viewModel = _viewModel(serverWithThree(), current: 1);
+      await viewModel.load();
+      viewModel.startSelection(3);
+      expect(viewModel.isSelecting, isFalse);
+    });
+
+    testWidgets('길게 누르면 선택 모드 → 확인 Dialog → 삭제 중 화면 전체 로딩 → 목록 갱신', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final server = serverWithThree();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: ChangeNotifierProvider<MyRatingsViewModel>(
+            create: (_) => _viewModel(server, current: _memberId)..load(),
+            child: const MyRatingsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('별빛 아래 우리'));
+      await tester.pumpAndSettle();
+      expect(find.text('1개 선택됨'), findsOneWidget);
+      expect(find.text('선택한 1개 삭제'), findsOneWidget);
+      expect(find.text('수정'), findsNothing);
+
+      await tester.tap(find.textContaining('우주의 끝에서'));
+      await tester.pumpAndSettle();
+      expect(find.text('2개 선택됨'), findsOneWidget);
+
+      // 뒤로가기는 화면을 닫지 않고 선택만 취소
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('2개 선택됨'), findsNothing);
+      expect(find.text('수정'), findsNWidgets(3));
+
+      await tester.longPress(find.text('별빛 아래 우리'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('우주의 끝에서'));
+      await tester.pumpAndSettle();
+
+      // 확인 Dialog — 취소하면 요청 없음
+      server.calls.clear();
+      await tester.tap(find.text('선택한 2개 삭제'));
+      await tester.pumpAndSettle();
+      expect(find.text('선택한 2개 평점을 삭제할까요?'), findsOneWidget);
+      await tester.tap(find.text('취소').last);
+      await tester.pumpAndSettle();
+      expect(server.calls, isEmpty);
+
+      // 삭제 → 진행 중에는 화면 전체 로딩, 뒤로가기도 막힘
+      final gate = Completer<void>();
+      server.writeGate = gate.future;
+      await tester.tap(find.text('선택한 2개 삭제'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(of: find.byType(Dialog), matching: find.text('삭제')),
+      );
+      // Dialog가 닫히는 프레임 → 삭제 시작을 알리는 프레임
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.bySemanticsLabel('삭제 중'), findsOneWidget);
+      expect(find.byType(ModalBarrier), findsWidgets);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.bySemanticsLabel('삭제 중'), findsOneWidget);
+
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('삭제 중'), findsNothing);
+      expect(find.text('2개 평점을 삭제했습니다.'), findsOneWidget);
+      expect(find.text('별빛 아래 우리'), findsNothing);
+      expect(find.text('선택한 2개 삭제'), findsNothing);
+      expect(server.calls.where((c) => c.startsWith('GET')), hasLength(1));
+    });
+
+    test('일부만 실패하면 실패한 평점만 선택된 채로 남는다', () async {
+      final server = serverWithThree()..failingRatingIds.add(2);
+      final viewModel = _viewModel(server, current: _memberId);
+      await viewModel.load();
+      viewModel
+        ..startSelection(3)
+        ..toggleSelection(2);
+
+      final failed = await viewModel.deleteSelected();
+
+      expect(failed, 1);
+      expect(viewModel.ratings.map((e) => e.rating.ratingId), [2, 1]);
+      expect(viewModel.isSelecting, isTrue);
+      expect(viewModel.selectedIds, {2});
+      expect(viewModel.isBulkDeleting, isFalse);
     });
   });
 }
