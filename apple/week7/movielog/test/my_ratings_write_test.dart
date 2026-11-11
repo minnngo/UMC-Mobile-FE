@@ -284,7 +284,21 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(Dialog), findsOneWidget);
-      expect(find.text('본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.'), findsOneWidget);
+      // 실패 문구는 Dialog 안과 Snackbar에 함께 보입니다.
+      expect(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.text('본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text('본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('저장 성공 후 GET만 실패하면 안내와 함께 조회만 다시 시도한다', (tester) async {

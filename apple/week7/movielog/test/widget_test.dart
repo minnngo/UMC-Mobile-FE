@@ -97,7 +97,7 @@ void main() {
     String location() =>
         AppRouter.router.routerDelegate.currentConfiguration.uri.path;
     expect(location(), '/movies');
-    expect(find.text('회원가입이 완료되었습니다. (학습용 회원 #42)'), findsOneWidget);
+    expect(find.text('회원가입이 완료되었습니다.'), findsOneWidget);
     expect(AppRouter.router.canPop(), isFalse);
 
     // 시스템 뒤로가기(Android 뒤로 버튼)를 눌러도 목록에 그대로 있음

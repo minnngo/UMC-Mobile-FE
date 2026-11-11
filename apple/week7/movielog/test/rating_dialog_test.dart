@@ -210,7 +210,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(RatingDialog), findsOneWidget);
-    expect(find.text('이미 이 영화에 평점을 남기셨습니다.'), findsOneWidget);
+    // 실패 문구는 Dialog 안과 Snackbar에 함께 보입니다.
+    expect(
+      find.descendant(
+        of: find.byType(RatingDialog),
+        matching: find.text('이미 이 영화에 평점을 남기셨습니다.'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.text('이미 이 영화에 평점을 남기셨습니다.'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('다시 볼래요'), findsOneWidget);
     expect(_button(tester, '확인').onPressed, isNotNull);
 

@@ -360,7 +360,7 @@ void _showSavedMessage(
 /// 평점 삭제 확인 Dialog (W7-REQ 평점 삭제 확인)
 ///
 /// 삭제 요청 중에는 버튼 로딩과 [PopScope]로 Dialog가 닫히지 않게 합니다.
-/// 실패하면 닫지 않고 서버 문구를 보여줘 다시 시도하거나 취소할 수 있게 둡니다.
+/// 실패하면 닫지 않고 서버 문구를 Dialog 안과 Snackbar로 보여줘 다시 시도하거나 취소할 수 있게 둡니다.
 class _DeleteRatingDialog extends StatefulWidget {
   const _DeleteRatingDialog({
     this.title = '평점을 삭제할까요?',
@@ -403,6 +403,7 @@ class _DeleteRatingDialogState extends State<_DeleteRatingDialog> {
             ? error.message
             : '삭제하지 못했습니다. 잠시 후 다시 시도해 주세요.';
       });
+      showFailureSnackBar(context, _errorText!);
     }
   }
 

@@ -16,6 +16,8 @@ import 'dialog_action_button.dart';
 /// - 저장 중에는 버튼 로딩, 입력 잠금, 뒤로가기([PopScope]) 차단.
 ///   바깥 탭은 호출부의 `barrierDismissible: false`로 막습니다.
 ///
+/// 실패 문구는 Dialog 안과 Snackbar에 함께 보여줍니다.
+///
 /// 수정할 때는 [initialScore]·[initialComment]에 기존 값을 넣어 채운 채로 엽니다.
 /// Dialog 안에서 값을 바꾸는 동안 원본 평점 객체는 건드리지 않으므로 취소 시 복구할 것이 없습니다.
 ///
@@ -84,6 +86,8 @@ class _RatingDialogState extends State<RatingDialog> {
             ? error.message
             : '저장하지 못했습니다. 잠시 후 다시 시도해 주세요.';
       });
+      // Dialog 안 문구와 함께 Snackbar로도 알립니다. (Dialog는 열어 둬 입력을 유지)
+      showFailureSnackBar(context, _errorText!);
     }
   }
 
@@ -205,4 +209,15 @@ class _RatingDialogState extends State<RatingDialog> {
     borderRadius: BorderRadius.circular(12),
     borderSide: BorderSide(color: color, width: 2),
   );
+}
+
+/// 쓰기 실패 Snackbar — 평점 등록·수정·삭제 Dialog가 함께 씁니다.
+///
+/// 이전 Snackbar를 닫고 새 문구를 띄워 같은 실패가 쌓이지 않게 합니다.
+void showFailureSnackBar(BuildContext context, String message) {
+  ScaffoldMessenger.maybeOf(context)
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
 }

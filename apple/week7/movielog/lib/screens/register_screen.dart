@@ -140,7 +140,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       // ScaffoldMessenger는 앱 전체에 하나라 화면을 이동해도 Snackbar가 남습니다.
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('회원가입이 완료되었습니다. (학습용 회원 #$memberId)'),
+          content: const Text('회원가입이 완료되었습니다.'),
           behavior: SnackBarBehavior.floating,
         ),
       );

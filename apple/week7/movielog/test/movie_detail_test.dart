@@ -171,7 +171,21 @@ void main() {
       await _rate(tester, 3, comment: '두 번째 감상');
 
       expect(find.byType(RatingDialog), findsOneWidget);
-      expect(find.text('이미 이 영화에 평점을 남기셨습니다.'), findsOneWidget);
+      // 실패 문구는 Dialog 안과 Snackbar에 함께 보입니다.
+      expect(
+        find.descendant(
+          of: find.byType(RatingDialog),
+          matching: find.text('이미 이 영화에 평점을 남기셨습니다.'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text('이미 이 영화에 평점을 남기셨습니다.'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('두 번째 감상'), findsOneWidget);
       expect(find.textContaining('평점을 등록했습니다.'), findsNothing);
       // 409는 목록을 다시 조회할 필요가 없는 오류 — GET 없음
