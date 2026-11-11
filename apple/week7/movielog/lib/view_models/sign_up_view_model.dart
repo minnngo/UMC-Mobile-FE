@@ -65,6 +65,7 @@ class SignUpViewModel extends ChangeNotifier {
     final trimmed = value.trim();
     _currentNickname = trimmed;
     _nicknameRequestVersion++; // 이전 요청의 응답을 무효화합니다.
+    _clearSubmitError();
     if (_duplicatedNickname != null && trimmed == _duplicatedNickname) {
       nicknameCheckStatus = CheckStatus.duplicated;
       nicknameErrorText = _duplicatedNicknameText;
@@ -130,6 +131,7 @@ class SignUpViewModel extends ChangeNotifier {
     final trimmed = value.trim();
     _currentEmail = trimmed;
     _emailRequestVersion++;
+    _clearSubmitError();
     if (_duplicatedEmail != null && trimmed == _duplicatedEmail) {
       emailCheckStatus = CheckStatus.duplicated;
       emailErrorText = _duplicatedEmailText;
@@ -191,9 +193,17 @@ class SignUpViewModel extends ChangeNotifier {
 
   /// 비밀번호를 고치면 이전 서버 오류를 지웁니다.
   void onPasswordChanged() {
-    if (passwordErrorText == null) return;
-    passwordErrorText = null;
+    if (passwordErrorText == null && submitStatus != SubmitStatus.error) return;
+    _clearSubmitError();
     if (!_disposed) notifyListeners();
+  }
+
+  /// 입력이 바뀌면 이전 가입 요청의 서버 오류(400·409)는 더 이상 현재 값의 결과가 아니므로 지웁니다.
+  /// (호출한 쪽이 notifyListeners를 합니다)
+  void _clearSubmitError() {
+    if (submitStatus == SubmitStatus.error) submitStatus = SubmitStatus.idle;
+    passwordErrorText = null;
+    snackbarMessage = null;
   }
 
   Future<void> submit(CreateMemberRequest request) async {

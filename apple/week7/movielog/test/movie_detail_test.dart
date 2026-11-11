@@ -198,4 +198,32 @@ void main() {
     expect(requests.last.path, endsWith('/movie/2'));
     expect(find.text('Cinema Archive'), findsOneWidget);
   });
+
+  testWidgets('목록에서 넘긴 TmdbMovieDto(extra)로 로딩 없이 먼저 보여주고, 상세 응답으로 채운다', (
+    tester,
+  ) async {
+    _useTallView(tester);
+    final requests = <Uri>[];
+    AppRouter.router.go('/movies');
+    await tester.pumpWidget(
+      MovieLogApp(
+        tmdbMovieService: fakeTmdbService(
+          requests: requests,
+          delay: const Duration(milliseconds: 100),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('별빛 아래 우리'));
+    await tester.pump(); // 화면 전환 시작
+    await tester.pump(const Duration(milliseconds: 50)); // 상세 응답 전
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('별빛 아래 우리'), findsWidgets);
+
+    await tester.pumpAndSettle();
+    expect(requests.last.path, endsWith('/movie/1'));
+    // 상세 응답의 러닝타임·장르로 채워짐
+    expect(find.text('2024 • 로맨스/드라마 • 124분'), findsOneWidget);
+  });
 }

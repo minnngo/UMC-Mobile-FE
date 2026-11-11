@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/models/rating_request.dart';
 import '../data/models/tmdb_movie_detail_dto.dart';
+import '../data/models/tmdb_movie_dto.dart';
 import '../data/services/rating_api_service.dart';
 import '../data/services/tmdb_movie_service.dart';
 import '../models/movie_detail.dart';
@@ -22,7 +23,11 @@ class MovieDetailViewModel extends ChangeNotifier {
     required this.movieId,
     required this.ratingService,
     this.memberId,
+    this.initialMovie,
   });
+
+  /// 목록·홈 카드에서 GoRouter extra로 받은 영화 — 있으면 상세 응답 전에 기본 정보를 먼저 보여줍니다.
+  final TmdbMovieDto? initialMovie;
 
   final TmdbMovieService _service;
   final RatingApiService ratingService;
@@ -55,13 +60,23 @@ class MovieDetailViewModel extends ChangeNotifier {
       return;
     }
 
-    status = MovieDetailLoadStatus.loading;
+    // extra로 받은 목록 정보가 있으면 로딩 대신 먼저 보여주고, 러닝타임·장르는 상세 응답으로 채웁니다.
+    final initial = initialMovie;
+    if (detail == null && initial != null) {
+      detail = _fromListDto(initial);
+      status = MovieDetailLoadStatus.success;
+    } else {
+      status = MovieDetailLoadStatus.loading;
+    }
     notifyListeners();
 
     try {
       detail = _toDetail(await _service.fetchMovieDetail(id));
       status = MovieDetailLoadStatus.success;
     } on DioException catch (error) {
+      if (_disposed) return;
+      // 목록 정보로 이미 화면을 그렸으면 그대로 둡니다. (평점 등록에 필요한 TMDB id는 이미 있음)
+      if (detail != null) return notifyListeners();
       status = MovieDetailLoadStatus.error;
       message = error.response?.statusCode == 404
           ? '영화를 찾을 수 없습니다.'
@@ -70,6 +85,24 @@ class MovieDetailViewModel extends ChangeNotifier {
 
     // 응답이 오기 전에 상세 화면을 벗어났으면(dispose) 알리지 않습니다.
     if (!_disposed) notifyListeners();
+  }
+
+  /// 목록 응답(TmdbMovieDto)만으로 만든 임시 상세 — 장르 이름·러닝타임·참여 수는 아직 없습니다.
+  static MovieDetail _fromListDto(TmdbMovieDto dto) {
+    final releaseDate = dto.releaseDate;
+    return MovieDetail(
+      title: dto.title,
+      posterPath: dto.posterPath,
+      year: releaseDate != null && releaseDate.length >= 4
+          ? int.tryParse(releaseDate.substring(0, 4))
+          : null,
+      genres: const [],
+      rating: dto.voteAverage / 2,
+      synopsis: [
+        for (final paragraph in dto.overview.split('\n'))
+          if (paragraph.trim().isNotEmpty) paragraph.trim(),
+      ],
+    );
   }
 
   /// TMDB 응답을 상세 화면이 쓰는 [MovieDetail]로 바꿉니다.

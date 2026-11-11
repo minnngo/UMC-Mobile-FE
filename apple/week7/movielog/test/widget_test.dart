@@ -22,7 +22,7 @@ void main() {
         InMemorySharedPreferencesAsync.empty();
   });
 
-  testWidgets('시작 → 회원가입 → 홈으로 이동하고, 회원가입 뒤로가기는 시작 화면, 홈에서는 뒤로 갈 수 없다', (
+  testWidgets('시작 → 회원가입 → 영화 목록으로 이동하고, 회원가입 뒤로가기는 시작 화면, 목록에서는 뒤로 갈 수 없다', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -93,15 +93,17 @@ void main() {
     await tester.tap(find.text('가입하기'));
     await tester.pumpAndSettle();
 
-    // 홈 도착 + 가입 완료 안내, 뒤로 돌아갈 화면 없음
-    expect(find.text('오늘은 어떤\n영화를 볼까요?'), findsOneWidget);
+    // 영화 목록(/movies) 도착 + 가입 완료 안내, 뒤로 돌아갈 화면 없음
+    String location() =>
+        AppRouter.router.routerDelegate.currentConfiguration.uri.path;
+    expect(location(), '/movies');
     expect(find.text('회원가입이 완료되었습니다. (학습용 회원 #42)'), findsOneWidget);
     expect(AppRouter.router.canPop(), isFalse);
 
-    // 시스템 뒤로가기(Android 뒤로 버튼)를 눌러도 홈에 그대로 있음
+    // 시스템 뒤로가기(Android 뒤로 버튼)를 눌러도 목록에 그대로 있음
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('오늘은 어떤\n영화를 볼까요?'), findsOneWidget);
+    expect(location(), '/movies');
   });
 
   testWidgets('홈 인기 영화 카드를 누르면 같은 ID의 영화 상세로 이동한다', (

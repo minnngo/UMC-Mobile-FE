@@ -398,6 +398,7 @@ class _PopularMovieCard extends StatelessWidget {
       width: 140,
       child: MovieCard(
         movieId: movie.id,
+        extra: movie,
         title: movie.title,
         poster: TmdbPosterImage(
           posterPath: movie.posterPath,

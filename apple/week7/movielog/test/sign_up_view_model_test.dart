@@ -245,4 +245,27 @@ void main() {
       expect(viewModel.snackbarMessage, contains('가입 결과를 확인하지 못했습니다'));
     });
   });
+
+  test('닉네임·이메일·비밀번호를 바꾸면 이전 가입 요청의 서버 오류를 지운다', () async {
+    const request = CreateMemberRequest(
+      email: 'movie@umc.com',
+      password: 'Password1!',
+      nickname: '무비러버',
+    );
+    final viewModel = SignUpViewModel(fakeSignUpService(signUpStatus: 409));
+
+    for (final change in <void Function()>[
+      () => viewModel.onNicknameChanged('무비러버2'),
+      () => viewModel.onEmailChanged('movie2@umc.com'),
+      viewModel.onPasswordChanged,
+    ]) {
+      await viewModel.submit(request);
+      expect(viewModel.submitStatus, SubmitStatus.error);
+      expect(viewModel.snackbarMessage, isNotNull);
+
+      change();
+      expect(viewModel.submitStatus, SubmitStatus.idle);
+      expect(viewModel.snackbarMessage, isNull);
+    }
+  });
 }

@@ -18,6 +18,7 @@ class MovieCard extends StatelessWidget {
     required this.posterRadius,
     required this.badge,
     required this.subtitle,
+    this.extra,
   });
 
   /// 상세 화면 경로에 쓰는 영화 ID — TMDB 영화는 TMDB id
@@ -37,6 +38,9 @@ class MovieCard extends StatelessWidget {
   /// 제목 아래 줄 (홈: 별점, 목록: 연도 · 장르)
   final Widget subtitle;
 
+  /// 상세 화면에 GoRouter `extra`로 함께 넘길 객체 — TMDB 영화면 [movieId]의 TmdbMovieDto
+  final Object? extra;
+
   @override
   Widget build(BuildContext context) {
     return Semantics(
@@ -44,7 +48,7 @@ class MovieCard extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         // push: 상세에서 뒤로가기로 이 화면에 돌아옴
-        onTap: () => context.push('/movies/$movieId'),
+        onTap: () => context.push('/movies/$movieId', extra: extra),
         child: Column(
           // 부모 높이를 채우지 않고 카드 높이만 차지
           mainAxisSize: MainAxisSize.min,

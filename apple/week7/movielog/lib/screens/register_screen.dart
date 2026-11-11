@@ -30,7 +30,7 @@ typedef FieldValidator = String? Function(String? value);
 /// 두 결과를 함께 보여주고, 닉네임·이메일이 모두 사용 가능해야 가입하기가 켜집니다.
 ///
 /// 7주차 — 가입하기가 POST /v6/members를 보냅니다.
-/// - 성공: 응답의 memberId를 [LearningMemberSession]에 저장하고 홈으로 이동
+/// - 성공: 응답의 memberId를 [LearningMemberSession]에 저장하고 영화 목록으로 이동
 /// - 400 비밀번호 형식: 비밀번호 입력칸 errorText
 /// - 409 이메일·닉네임 중복(최종 판정) 등: 서버 message를 Snackbar로
 /// - 제출 중: 버튼 로딩, 입력·뒤로가기 막기
@@ -117,8 +117,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   /// 가입하기 — Form 전체를 다시 검증한 뒤 POST /v6/members를 보냅니다.
   ///
-  /// 성공하면 memberId를 학습용 세션에 저장하고 go로 홈에 이동해
-  /// 회원가입 화면을 스택에서 빼므로 홈에서 뒤로 돌아오지 않습니다.
+  /// 성공하면 memberId를 학습용 세션에 저장하고 go로 영화 목록(/movies)에 이동해
+  /// 회원가입 화면을 스택에서 빼므로 목록에서 뒤로 돌아오지 않습니다.
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
@@ -137,14 +137,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final memberId = viewModel.createdMemberId;
     if (viewModel.submitStatus == SubmitStatus.success && memberId != null) {
       context.read<LearningMemberSession>().setMemberId(memberId);
-      // ScaffoldMessenger는 앱 전체에 하나라 홈으로 이동해도 Snackbar가 남습니다.
+      // ScaffoldMessenger는 앱 전체에 하나라 화면을 이동해도 Snackbar가 남습니다.
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('회원가입이 완료되었습니다. (학습용 회원 #$memberId)'),
           behavior: SnackBarBehavior.floating,
         ),
       );
-      context.go('/home');
+      context.go('/movies');
       return;
     }
 

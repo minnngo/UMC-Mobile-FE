@@ -72,6 +72,8 @@ class _MovieGridItem extends StatelessWidget {
 
     return MovieCard(
       movieId: movie.id,
+      // 선택한 TmdbMovieDto를 extra로 넘겨 상세가 바로 기본 정보를 보여줍니다.
+      extra: movie,
       title: movie.title,
       poster: TmdbPosterImage(
         posterPath: movie.posterPath,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../data/models/tmdb_movie_dto.dart';
 import '../data/services/sign_up_service.dart';
 import '../data/services/rating_api_service.dart';
 import '../data/services/tmdb_movie_service.dart';
@@ -52,10 +53,16 @@ class AppRouter {
           if (detail is MovieDetail) {
             return MovieDetailScreen(movieId: movieId, detail: detail);
           }
+          // 목록·홈에서 넘긴 TmdbMovieDto는 경로 id와 같을 때만 씁니다.
+          // 직접 접근·Deep Link처럼 extra가 없으면 TMDB 상세를 다시 조회합니다.
+          final initialMovie = detail is TmdbMovieDto && detail.id == movieId
+              ? detail
+              : null;
           return ChangeNotifierProvider<MovieDetailViewModel>(
             create: (context) => MovieDetailViewModel(
               context.read<TmdbMovieService>(),
               movieId: movieId,
+              initialMovie: initialMovie,
               ratingService: context.read<RatingApiService>(),
               memberId: context.read<LearningMemberSession>().memberId,
             )..load(),
