@@ -27,10 +27,15 @@ import '../view_models/movie_detail_view_model.dart';
 /// - [_InfoSection] 제목, 연도·장르·러닝타임, 별점, 장르 칩
 /// - [_SynopsisSection] 시놉시스
 /// - [_ActionBar] 하단 고정 즐겨찾기·평점 남기기 버튼
+///
+/// 7주차 — 평점 남기기가 [RatingDialog]를 열고, Dialog 안에서
+/// [MovieDetailViewModel.createRating]으로 v6 POST를 보냅니다.
+/// 저장이 끝나 Dialog가 true를 돌려준 뒤에만 성공 Snackbar를 띄웁니다.
+/// 학습용 회원가입 전이면 평점 남기기를 끄고 회원가입으로 안내합니다.
 class MovieDetailScreen extends StatefulWidget {
   const MovieDetailScreen({super.key, required this.movieId, this.detail});
 
-  /// TMDB 영화 id — 평점 Dialog에 그대로 전달합니다.
+  /// TMDB 영화 id (경로의 movieId)
   final int? movieId;
 
   /// 이미 가진 상세 정보 — null이면 [MovieDetailViewModel]의 상태를 구독합니다.
@@ -58,14 +63,28 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   Future<void> _rate() async {
-    final rating = await showDialog<double>(
+    final viewModel = context.read<MovieDetailViewModel>();
+    final saved = await showDialog<bool>(
       context: context,
-      builder: (context) => RatingDialog(movieId: widget.movieId),
+      barrierDismissible: false, // 저장 중 바깥 탭으로 닫히는 것도 막습니다.
+      builder: (_) => RatingDialog(
+        // movieId는 ViewModel이 이미 갖고 있어 Dialog 밖으로 따로 넘기지 않습니다.
+        onSubmit: (score, comment) async {
+          await viewModel.createRating(score: score, comment: comment);
+          if (viewModel.submitStatus != SubmitStatus.success) {
+            throw WriteFailure(viewModel.submitMessage ?? '저장에 실패했습니다.');
+          }
+        },
+      ),
     );
-    // 바깥을 눌러 닫았거나 별을 고르지 않고 확인을 누른 경우
-    if (!mounted || rating == null || rating < 0.5) return;
-    _showMessage('평점 ${rating.toStringAsFixed(1)}점을 남겼습니다.');
+    // 저장 요청과 Snackbar는 서로 다른 비동기 경계 — await 뒤 mounted를 다시 확인합니다.
+    // 취소(false)·뒤로가기(null)면 아무 것도 하지 않습니다.
+    if (!mounted || saved != true) return;
+    _showMessage('평점을 등록했습니다. 마이페이지의 "내가 등록한 평점"에서 확인할 수 있습니다.');
   }
+
+  /// 홈 추천 신작([widget.detail])은 Mock 영화라 TMDB id가 아니므로 서버에 평점을 남기지 않습니다.
+  void _rateMockMovie() => _showMessage('예시 영화에는 평점을 남길 수 없습니다.');
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +120,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   }
 
   Widget _buildDetail(MovieDetail detail) {
+    final isMock = widget.detail != null;
+    final canRate = isMock || context.read<MovieDetailViewModel>().canRate;
+
     return Scaffold(
       appBar: const _DetailHeader(),
       body: ListView(
@@ -113,7 +135,8 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       bottomNavigationBar: _ActionBar(
         bookmarked: _bookmarked,
         onBookmark: _toggleBookmark,
-        onRate: _rate,
+        onRate: isMock ? _rateMockMovie : (canRate ? _rate : null),
+        onSignUp: canRate ? null : () => context.go('/register'),
       ),
     );
   }
@@ -360,11 +383,17 @@ class _ActionBar extends StatelessWidget {
     required this.bookmarked,
     required this.onBookmark,
     required this.onRate,
+    this.onSignUp,
   });
 
   final bool bookmarked;
   final VoidCallback onBookmark;
-  final VoidCallback onRate;
+
+  /// null이면 평점 남기기가 비활성 (학습용 회원가입 전)
+  final VoidCallback? onRate;
+
+  /// null이 아니면 버튼 위에 학습용 회원가입 안내를 보여줍니다.
+  final VoidCallback? onSignUp;
 
   @override
   Widget build(BuildContext context) {
@@ -383,45 +412,80 @@ class _ActionBar extends StatelessWidget {
         top: false,
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Figma 너비 176 : 174
-              Expanded(
-                flex: 176,
-                // 테두리형 — border 1px #6750A4, 아이콘 14 x 18
-                child: PillButton(
-                  label: '즐겨찾기',
-                  // 즐겨찾기 상태는 제공된 북마크 아이콘(W3-REQ)을 사용합니다.
-                  iconAsset: bookmarked
-                      ? 'assets/icons/bookmark_filled.png'
-                      : 'assets/icons/detail_bookmark.svg',
-                  iconSize: const Size(14, 18),
-                  color: colors.primary,
-                  foregroundColor: colors.primary,
-                  outlined: true,
-                  textStyle: labelStyle,
-                  selected: bookmarked,
-                  onPressed: onBookmark,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 174,
-                // 채움형 — 배경 #6750A4, 아이콘 20 x 20 #FFFFFF, box-shadow 0 1 2 #0000000D
-                child: PillButton(
-                  label: '평점 남기기',
-                  iconAsset: 'assets/icons/detail_rate_review.svg',
-                  iconSize: const Size(20, 20),
-                  color: colors.primary,
-                  foregroundColor: colors.onPrimary,
-                  textStyle: labelStyle,
-                  shadows: AppShadows.card,
-                  onPressed: onRate,
-                ),
-              ),
+              if (onSignUp != null) _SignUpHint(onSignUp: onSignUp!),
+              _buttons(colors, labelStyle),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buttons(ColorScheme colors, TextStyle? labelStyle) {
+    return Row(
+      children: [
+        // Figma 너비 176 : 174
+        Expanded(
+          flex: 176,
+          // 테두리형 — border 1px #6750A4, 아이콘 14 x 18
+          child: PillButton(
+            label: '즐겨찾기',
+            // 즐겨찾기 상태는 제공된 북마크 아이콘(W3-REQ)을 사용합니다.
+            iconAsset: bookmarked
+                ? 'assets/icons/bookmark_filled.png'
+                : 'assets/icons/detail_bookmark.svg',
+            iconSize: const Size(14, 18),
+            color: colors.primary,
+            foregroundColor: colors.primary,
+            outlined: true,
+            textStyle: labelStyle,
+            selected: bookmarked,
+            onPressed: onBookmark,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          flex: 174,
+          // 채움형 — 배경 #6750A4, 아이콘 20 x 20 #FFFFFF, box-shadow 0 1 2 #0000000D
+          child: PillButton(
+            label: '평점 남기기',
+            iconAsset: 'assets/icons/detail_rate_review.svg',
+            iconSize: const Size(20, 20),
+            color: colors.primary,
+            foregroundColor: colors.onPrimary,
+            textStyle: labelStyle,
+            shadows: AppShadows.card,
+            onPressed: onRate,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 학습용 회원가입 전 안내 — 평점은 가입으로 얻은 memberId로만 남길 수 있습니다.
+class _SignUpHint extends StatelessWidget {
+  const _SignUpHint({required this.onSignUp});
+
+  final VoidCallback onSignUp;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '평점을 남기려면 학습용 회원가입이 필요합니다.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          TextButton(onPressed: onSignUp, child: const Text('회원가입')),
+        ],
       ),
     );
   }

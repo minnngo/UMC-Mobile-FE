@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../theme/app_colors.dart';
+
 /// 아이콘 + 글자가 들어간 둥근(pill) 버튼 — 높이 48, radius 9999
 ///
 /// - 채움형: 배경 [color], 아이콘·글자 [foregroundColor]
 /// - 테두리형([outlined]): border 1px [color], 아이콘·글자 [foregroundColor]
+/// - 비활성([onPressed]가 null): 채움형 배경을 #CCC2DC로 바꾸고 눌러도 반응하지 않습니다.
 ///
 /// 사용처: 홈 배너 상세보기, 영화 상세 즐겨찾기·평점 남기기
 class PillButton extends StatelessWidget {
@@ -30,7 +33,7 @@ class PillButton extends StatelessWidget {
   final Size iconSize;
   final Color color;
   final Color foregroundColor;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final bool outlined;
 
   /// 아이콘과 글자 사이 간격
@@ -76,7 +79,9 @@ class PillButton extends StatelessWidget {
           shadows: shadows,
         ),
         child: Material(
-          color: outlined ? Colors.transparent : color,
+          color: outlined
+              ? Colors.transparent
+              : (onPressed == null ? AppColors.primaryDisabled : color),
           shape: StadiumBorder(
             side: outlined ? BorderSide(color: color) : BorderSide.none,
           ),

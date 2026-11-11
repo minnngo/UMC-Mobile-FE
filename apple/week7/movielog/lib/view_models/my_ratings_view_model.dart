@@ -5,6 +5,9 @@ import '../data/models/rating_with_movie.dart';
 import '../data/models/tmdb_movie_detail_dto.dart';
 import '../data/services/rating_api_service.dart';
 import '../data/services/tmdb_movie_service.dart';
+import 'submit_status.dart';
+
+export 'submit_status.dart';
 
 enum MyRatingsLoadStatus { idle, loading, success, empty, error }
 
@@ -17,12 +20,32 @@ enum MyRatingsLoadStatus { idle, loading, success, empty, error }
 ///
 /// [memberId]는 회원가입으로 얻은 학습용 ID입니다(LearningMemberSession).
 /// 인증된 '내 계정'은 아니며, 실제 회원 식별은 JWT 주차에서 토큰으로 바뀝니다.
+///
+/// 7주차 — 수정·삭제가 성공하면 목록을 다시 조회합니다.
+/// - 쓰기 실패: [WriteFailure]를 던져 Dialog가 실패로 처리 (입력 유지, 다시 시도)
+/// - 쓰기 성공 + 재조회 실패: 저장 성공으로 돌려주고 [refreshWarning]으로 조회만 다시 시도하게 안내
 class MyRatingsViewModel extends ChangeNotifier {
-  MyRatingsViewModel(this._service, this._movieService, this.memberId);
+  MyRatingsViewModel(
+    this._service,
+    this._movieService,
+    this.memberId, {
+    this.currentMemberId,
+  });
 
   final RatingApiService _service;
   final TmdbMovieService _movieService;
+
+  /// 목록을 조회하는 회원
   final int memberId;
+
+  /// 지금 앱을 쓰는 학습용 회원(LearningMemberSession) — 가입 전이면 null
+  final int? currentMemberId;
+
+  /// 본인이 작성한 평점 목록일 때만 수정·삭제 버튼을 보여줍니다.
+  bool get canModify => currentMemberId != null && currentMemberId == memberId;
+
+  /// 저장은 성공했지만 다시 조회가 실패했을 때의 안내 — 다음 조회가 성공하면 지웁니다.
+  String? refreshWarning;
 
   /// movieId → TMDB 영화 (404로 없는 영화면 null을 저장)
   final Map<int, TmdbMovieDetailDto?> _movieCache = {};
@@ -61,6 +84,7 @@ class MyRatingsViewModel extends ChangeNotifier {
           RatingWithMovie(rating: rating, movie: _movieCache[rating.movieId]),
       ];
       ratings = entries;
+      refreshWarning = null;
       status = entries.isEmpty
           ? MyRatingsLoadStatus.empty
           : MyRatingsLoadStatus.success;
@@ -78,6 +102,53 @@ class MyRatingsViewModel extends ChangeNotifier {
       message = _loadFailedText;
     }
     if (!_disposed && version == _requestVersion) notifyListeners();
+  }
+
+  /// 평점 수정 — PATCH. comment가 null이면 후기를 지우는 요청입니다.
+  Future<void> updateRating({
+    required int ratingId,
+    required int score,
+    String? comment,
+  }) {
+    return _write(
+      () => _service.updateRating(
+        memberId: memberId,
+        ratingId: ratingId,
+        score: score,
+        comment: comment,
+      ),
+    );
+  }
+
+  /// 평점 삭제 — DELETE (204, body 없음)
+  Future<void> deleteRating(int ratingId) {
+    return _write(
+      () => _service.deleteRating(memberId: memberId, ratingId: ratingId),
+    );
+  }
+
+  /// 쓰기 → 성공하면 다시 조회. 쓰기 실패와 재조회 실패를 구분합니다.
+  Future<void> _write(Future<void> Function() request) async {
+    try {
+      await request();
+    } on DioException catch (error) {
+      // 403(본인 평점 아님)·404(이미 없는 평점)는 화면 목록이 서버와 어긋났다는 뜻 — 다시 맞춥니다.
+      if (shouldRefreshAfterRatingError(error) && !_disposed) await load();
+      throw WriteFailure(writeErrorMessage(error));
+    } catch (_) {
+      throw const WriteFailure('저장하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    }
+    // 여기부터는 저장 성공 — GET이 실패해도 저장 실패로 다시 던지지 않습니다.
+    if (!_disposed) await _refreshAfterWrite();
+  }
+
+  Future<void> _refreshAfterWrite() async {
+    await load(); // 실패하면 load()가 status=error로 기록합니다.
+    if (_disposed) return;
+    if (status == MyRatingsLoadStatus.error) {
+      refreshWarning = '저장은 완료됐지만 목록을 불러오지 못했습니다. 조회만 다시 시도해 주세요.';
+      notifyListeners();
+    }
   }
 
   /// TMDB에서 영화를 찾아 캐시에 넣습니다. 없는 영화(404)는 null로 캐시하고,

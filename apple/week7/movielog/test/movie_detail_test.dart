@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 import 'package:movielog/app/movie_log_app.dart';
+import 'package:movielog/data/services/rating_api_service.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
 import 'package:movielog/router/app_router.dart';
 import 'package:movielog/screens/movie_detail_screen.dart';
@@ -12,16 +14,45 @@ import 'package:movielog/theme/app_theme.dart';
 import 'package:movielog/view_models/movie_detail_view_model.dart';
 import 'package:movielog/widgets/rating_dialog.dart';
 
+import 'fake_ratings.dart';
 import 'fake_tmdb.dart';
 
 /// 라우터와 같은 방식으로 상세 ViewModel을 만들어 붙입니다.
-Widget _app(TmdbMovieService service, int? movieId) => MaterialApp(
+/// [memberId]는 학습용 세션 값 — null이면 회원가입 전입니다.
+Widget _app(
+  TmdbMovieService service,
+  int? movieId, {
+  RatingApiService? ratingService,
+  int? memberId,
+}) => MaterialApp(
   theme: AppTheme.light,
   home: ChangeNotifierProvider<MovieDetailViewModel>(
-    create: (_) => MovieDetailViewModel(service, movieId: movieId)..load(),
+    create: (_) => MovieDetailViewModel(
+      service,
+      movieId: movieId,
+      ratingService: ratingService ?? fakeRatingApiService(),
+      memberId: memberId,
+    )..load(),
     child: MovieDetailScreen(movieId: movieId),
   ),
 );
+
+/// 평점 Dialog에서 [stars]점을 골라 [comment]와 함께 확인을 누릅니다.
+Future<void> _rate(WidgetTester tester, int stars, {String? comment}) async {
+  await tester.tap(find.text('평점 남기기'));
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find
+        .descendant(of: find.byType(Dialog), matching: find.byType(SvgPicture))
+        .at(stars - 1),
+  );
+  await tester.pump(); // 별점이 반영돼 확인 버튼이 켜진 프레임을 그립니다.
+  if (comment != null) {
+    await tester.enterText(find.byType(TextField), comment);
+  }
+  await tester.tap(find.text('확인'));
+  await tester.pumpAndSettle();
+}
 
 void _useTallView(WidgetTester tester) {
   tester.view.physicalSize = const Size(390, 1600);
@@ -90,15 +121,61 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('별빛 아래 우리'), findsOneWidget);
     });
+  });
 
-    testWidgets('평점 Dialog에 같은 TMDB id를 전달한다', (tester) async {
+  group('평점 등록 (POST /v6/members/{memberId}/ratings)', () {
+    testWidgets('학습용 회원가입 전에는 평점 남기기가 꺼져 있고 회원가입을 안내한다', (tester) async {
       _useTallView(tester);
       await tester.pumpWidget(_app(fakeTmdbService(), 1));
       await tester.pumpAndSettle();
 
+      expect(find.text('평점을 남기려면 학습용 회원가입이 필요합니다.'), findsOneWidget);
       await tester.tap(find.text('평점 남기기'));
       await tester.pumpAndSettle();
-      expect(tester.widget<RatingDialog>(find.byType(RatingDialog)).movieId, 1);
+      expect(find.byType(RatingDialog), findsNothing);
+    });
+
+    testWidgets('가입한 memberId와 TMDB id로 등록하고, 성공하면 Dialog를 닫고 Snackbar', (
+      tester,
+    ) async {
+      _useTallView(tester);
+      final server = FakeRatingServer();
+      await tester.pumpWidget(
+        _app(fakeTmdbService(), 1, ratingService: server.service, memberId: 42),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('평점을 남기려면 학습용 회원가입이 필요합니다.'), findsNothing);
+
+      await _rate(tester, 5);
+
+      expect(server.calls, ['POST /v6/members/42/ratings']);
+      // 코멘트를 비우면 comment 키를 보내지 않습니다.
+      expect(server.bodies.single, {'movieId': 1, 'score': 5});
+      expect(find.byType(RatingDialog), findsNothing);
+      expect(find.textContaining('평점을 등록했습니다.'), findsOneWidget);
+    });
+
+    testWidgets('409 중복 등록이면 Dialog에 서버 문구를 보여주고 입력을 유지한다', (tester) async {
+      _useTallView(tester);
+      final server = FakeRatingServer()
+        ..writeError = (
+          status: 409,
+          code: 'COMMON409',
+          message: '이미 이 영화에 평점을 남기셨습니다.',
+        );
+      await tester.pumpWidget(
+        _app(fakeTmdbService(), 1, ratingService: server.service, memberId: 42),
+      );
+      await tester.pumpAndSettle();
+
+      await _rate(tester, 3, comment: '두 번째 감상');
+
+      expect(find.byType(RatingDialog), findsOneWidget);
+      expect(find.text('이미 이 영화에 평점을 남기셨습니다.'), findsOneWidget);
+      expect(find.text('두 번째 감상'), findsOneWidget);
+      expect(find.textContaining('평점을 등록했습니다.'), findsNothing);
+      // 409는 목록을 다시 조회할 필요가 없는 오류 — GET 없음
+      expect(server.calls, ['POST /v6/members/42/ratings']);
     });
   });
 

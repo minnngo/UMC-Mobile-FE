@@ -578,30 +578,69 @@ void main() {
       expect(bookmarkPng(), findsNothing);
     });
 
-    testWidgets('평점 남기기를 누르면 별점 Dialog가 뜨고 결과를 안내한다', (
+    testWidgets('추천 신작(Mock 영화)은 TMDB id가 아니라 서버에 평점을 남기지 않는다', (
       WidgetTester tester,
     ) async {
       await openDetail(tester);
 
       await tester.tap(find.text('평점 남기기'));
       await tester.pumpAndSettle();
-      expect(find.text('영화는 어떠셨나요?'), findsOneWidget);
-
-      // 다섯 번째 별의 오른쪽 끝 → 5점
-      final dialogStar = find
-          .descendant(
-            of: find.byType(Dialog),
-            matching: find.byType(SvgPicture),
-          )
-          .last;
-      final rect = tester.getRect(dialogStar);
-      await tester.tapAt(rect.centerRight - const Offset(2, 0));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('확인'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('평점 5.0점을 남겼습니다.'), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.text('예시 영화에는 평점을 남길 수 없습니다.'), findsOneWidget);
     });
+  });
+
+  testWidgets('영화 상세에서 평점을 등록하면 Snackbar가 뜨고, 마이페이지 목록에서 다시 조회된다', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final server = FakeRatingServer();
+    await tester.pumpWidget(
+      MovieLogApp(
+        tmdbMovieService: fakeTmdbService(),
+        ratingApiService: server.service,
+        learningMemberSession: LearningMemberSession()..setMemberId(42),
+      ),
+    );
+    await tester.pumpAndSettle();
+    AppRouter.router.go('/movies/1');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('평점 남기기'));
+    await tester.pumpAndSettle();
+    final dialogStar = find
+        .descendant(of: find.byType(Dialog), matching: find.byType(SvgPicture))
+        .at(3);
+    await tester.tap(dialogStar);
+    await tester.enterText(find.byType(TextField), '별이 예뻐요');
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
+
+    // 학습용 memberId + TMDB id로 등록
+    expect(server.calls, ['POST /v6/members/42/ratings']);
+    expect(server.bodies.single, {
+      'movieId': 1,
+      'score': 4,
+      'comment': '별이 예뻐요',
+    });
+    expect(find.byType(Dialog), findsNothing);
+    expect(
+      find.text('평점을 등록했습니다. 마이페이지의 "내가 등록한 평점"에서 확인할 수 있습니다.'),
+      findsOneWidget,
+    );
+
+    // 마이페이지 → 내가 등록한 평점에서 GET으로 다시 확인
+    AppRouter.router.go('/my');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('내가 등록한 평점'));
+    await tester.pumpAndSettle();
+    expect(server.calls.last, 'GET /v6/members/42/ratings');
+    expect(find.text('별빛 아래 우리'), findsOneWidget);
+    expect(find.text('별점 4 / 5'), findsOneWidget);
+    expect(find.text('별이 예뻐요'), findsOneWidget);
   });
 
   testWidgets('홈 배너 상세보기를 누르면 영화 상세로 이동한다', (WidgetTester tester) async {

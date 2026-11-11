@@ -43,6 +43,7 @@ class AppRouter {
       // 영화 상세 — 하단 탭 없이 전체 화면으로 표시 (예: /movies/969681)
       // 경로의 movieId는 TMDB id이고, ViewModel이 TMDB 상세를 불러옵니다.
       // 상세 정보를 extra로 함께 받으면(홈 추천 신작 Mock) 그대로 보여줍니다.
+      // 평점 등록은 path의 TMDB id와 학습용 세션의 memberId로 보냅니다.
       GoRoute(
         path: '/movies/:movieId',
         builder: (context, state) {
@@ -55,6 +56,8 @@ class AppRouter {
             create: (context) => MovieDetailViewModel(
               context.read<TmdbMovieService>(),
               movieId: movieId,
+              ratingService: context.read<RatingApiService>(),
+              memberId: context.read<LearningMemberSession>().memberId,
             )..load(),
             child: MovieDetailScreen(movieId: movieId),
           );
@@ -108,6 +111,7 @@ class AppRouter {
                       context.read<RatingApiService>(),
                       context.read<TmdbMovieService>(),
                       id,
+                      currentMemberId: id,
                     )..load(),
                     child: const MyRatingsScreen(),
                   );
