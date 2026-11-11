@@ -309,6 +309,9 @@ class _CardActionButton extends StatelessWidget {
 /// 저장 실패는 [MyRatingsViewModel.updateRating]이 던져 Dialog 안에서 오류 문구로 보여줍니다.
 Future<void> onEditPressed(BuildContext context, RatingDto rating) async {
   final viewModel = context.read<MyRatingsViewModel>();
+  // 저장 뒤 재조회 중 목록이 로딩으로 바뀌면 이 카드의 context가 사라집니다.
+  // 앱에 하나뿐인 ScaffoldMessenger를 await 전에 잡아 두어 성공 안내를 놓치지 않습니다.
+  final messenger = ScaffoldMessenger.of(context);
   final saved = await showDialog<bool>(
     context: context,
     barrierDismissible: false, // 저장 중 바깥 탭으로 닫히는 것도 막습니다.
@@ -323,14 +326,15 @@ Future<void> onEditPressed(BuildContext context, RatingDto rating) async {
       ),
     ),
   );
-  if (!context.mounted || saved != true) return;
-  _showSavedMessage(context, viewModel, '평점을 수정했습니다.');
+  if (saved != true) return;
+  _showSavedMessage(messenger, viewModel, '평점을 수정했습니다.');
 }
 
 /// 삭제 — 되돌릴 수 없으므로 확인 Dialog에서 "삭제"를 눌러야만 요청합니다.
 /// "취소"는 요청을 보내지 않습니다.
 Future<void> onDeletePressed(BuildContext context, RatingDto rating) async {
   final viewModel = context.read<MyRatingsViewModel>();
+  final messenger = ScaffoldMessenger.of(context); // onEditPressed와 같은 이유
   final deleted = await showDialog<bool>(
     context: context,
     barrierDismissible: false, // 삭제 중 바깥 탭으로 닫히는 것도 막습니다.
@@ -339,18 +343,20 @@ Future<void> onDeletePressed(BuildContext context, RatingDto rating) async {
     ),
   );
   // deleted는 실제로 삭제까지 마쳤을 때만 true입니다.
-  if (!context.mounted || deleted != true) return;
-  _showSavedMessage(context, viewModel, '평점을 삭제했습니다.');
+  if (deleted != true) return;
+  _showSavedMessage(messenger, viewModel, '평점을 삭제했습니다.');
 }
 
 /// 저장 성공 안내 — 재조회가 실패했으면 화면의 refreshWarning이 대신 안내하므로 띄우지 않습니다.
+///
+/// 목록 카드의 context는 재조회 중 사라질 수 있어, 미리 잡아 둔 [messenger]로 띄웁니다.
 void _showSavedMessage(
-  BuildContext context,
+  ScaffoldMessengerState messenger,
   MyRatingsViewModel viewModel,
   String message,
 ) {
-  if (viewModel.refreshWarning != null) return;
-  ScaffoldMessenger.of(context)
+  if (!messenger.mounted || viewModel.refreshWarning != null) return;
+  messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
@@ -487,6 +493,7 @@ class _DeleteRatingDialogState extends State<_DeleteRatingDialog> {
 /// 다중 삭제 — 확인 Dialog를 거친 뒤 화면 전체 로딩으로 하나씩 삭제합니다.
 Future<void> onBulkDeletePressed(BuildContext context) async {
   final viewModel = context.read<MyRatingsViewModel>();
+  final messenger = ScaffoldMessenger.of(context);
   final total = viewModel.selectedIds.length;
   if (total == 0) return;
 
@@ -499,12 +506,12 @@ Future<void> onBulkDeletePressed(BuildContext context) async {
   if (!context.mounted || confirmed != true) return;
 
   final failed = await viewModel.deleteSelected();
-  if (!context.mounted) return;
+  if (!messenger.mounted) return;
   if (failed == 0) {
-    _showSavedMessage(context, viewModel, '$total개 평점을 삭제했습니다.');
+    _showSavedMessage(messenger, viewModel, '$total개 평점을 삭제했습니다.');
     return;
   }
-  ScaffoldMessenger.of(context)
+  messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(

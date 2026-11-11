@@ -225,7 +225,7 @@ class MyRatingsViewModel extends ChangeNotifier {
     await load(); // 실패하면 load()가 status=error로 기록합니다.
     if (_disposed) return;
     if (status == MyRatingsLoadStatus.error) {
-      refreshWarning = '저장은 완료됐지만 목록을 불러오지 못했습니다. 조회만 다시 시도해 주세요.';
+      refreshWarning = '저장은 완료됐지만 목록을 불러오지 못했습니다.\n조회만 다시 시도해 주세요.';
       notifyListeners();
     }
   }

@@ -52,6 +52,9 @@ class FakeRatingServer {
   /// 모든 요청을 이 Future가 끝날 때까지 미룸
   Future<void>? gate;
 
+  /// GET 응답을 이만큼 늦춤 — 실제 네트워크처럼 다시 조회하는 동안 화면이 그려지게 합니다.
+  Duration getDelay = Duration.zero;
+
   /// 쓰기 요청만 이 Future가 끝날 때까지 미룸 — 저장 중 상태 확인용
   Future<void>? writeGate;
 
@@ -91,6 +94,7 @@ class FakeRatingServer {
         );
 
     if (options.method == 'GET') {
+      if (getDelay > Duration.zero) await Future<void>.delayed(getDelay);
       if (failGet) {
         return handler.reject(
           DioException.connectionError(

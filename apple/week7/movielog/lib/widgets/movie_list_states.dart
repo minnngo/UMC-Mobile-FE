@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 import 'movielog_button.dart';
 
 /// 영화 목록을 불러오는 중 — 빈 화면 대신 진행 표시를 보여줍니다.
@@ -37,20 +39,30 @@ class MovieListError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    // 좌우 32 여백 안에서 가운데 정렬 — 긴 안내 문구가 화면 끝에 붙지 않게 합니다.
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.error_outline),
-          const SizedBox(height: 12),
-          Text(message ?? '영화를 불러오지 못했습니다.'),
-          const SizedBox(height: 16),
-          MovieLogButton(
-            label: '다시 시도',
-            width: _retryButtonWidth,
-            onPressed: onRetry,
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 28, color: colors.onSurfaceVariant),
+            const SizedBox(height: 12),
+            Text(
+              message ?? '영화를 불러오지 못했습니다.',
+              textAlign: TextAlign.center,
+              style: AppTheme.dialogBody.copyWith(color: colors.onSurface),
+            ),
+            const SizedBox(height: 20),
+            MovieLogButton(
+              label: '다시 시도',
+              width: _retryButtonWidth,
+              onPressed: onRetry,
+            ),
+          ],
+        ),
       ),
     );
   }

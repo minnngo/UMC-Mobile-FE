@@ -190,6 +190,8 @@ void main() {
     ) async {
       final server = _serverWithTwo();
       await pump(tester, server);
+      // 실제 네트워크처럼 재조회 중 로딩 화면이 그려지게 합니다. (카드 context가 사라지는 상황)
+      server.getDelay = const Duration(milliseconds: 300);
 
       await tester.tap(find.text('수정').first);
       await tester.pumpAndSettle();
@@ -237,6 +239,8 @@ void main() {
         ratings: [fakeRatingJson(ratingId: 3, movieId: 1)],
       );
       await pump(tester, server);
+      // 실제 네트워크처럼 재조회 중 로딩 화면이 그려지게 합니다. (카드 context가 사라지는 상황)
+      server.getDelay = const Duration(milliseconds: 300);
       server.calls.clear();
 
       await tester.tap(find.text('삭제'));
@@ -316,7 +320,7 @@ void main() {
       // 삭제는 성공 — Dialog는 닫히고 목록 자리에 재조회 안내
       expect(find.byType(Dialog), findsNothing);
       expect(
-        find.text('저장은 완료됐지만 목록을 불러오지 못했습니다. 조회만 다시 시도해 주세요.'),
+        find.text('저장은 완료됐지만 목록을 불러오지 못했습니다.\n조회만 다시 시도해 주세요.'),
         findsOneWidget,
       );
 
