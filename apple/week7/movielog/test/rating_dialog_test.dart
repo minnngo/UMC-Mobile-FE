@@ -12,11 +12,11 @@ import 'package:movielog/widgets/rating_dialog.dart';
 Finder _stars() =>
     find.descendant(of: find.byType(Dialog), matching: find.byType(SvgPicture));
 
-ElevatedButton _button(WidgetTester tester, String label) =>
-    tester.widget<ElevatedButton>(
+ButtonStyleButton _button(WidgetTester tester, String label) =>
+    tester.widget<ButtonStyleButton>(
       find.ancestor(
         of: find.text(label),
-        matching: find.byType(ElevatedButton),
+        matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
       ),
     );
 
@@ -89,7 +89,7 @@ void main() {
     expect(sentScore, 4);
   });
 
-  testWidgets('별점을 고르기 전에는 코멘트를 써도 확인이 꺼져 있고, 다시 선택하기로 0점이 되면 다시 꺼진다', (
+  testWidgets('W7-01 — 제목·코멘트 라벨·힌트, 별점을 고르기 전에는 코멘트를 써도 확인이 꺼져 있다', (
     tester,
   ) async {
     await _open(
@@ -98,17 +98,23 @@ void main() {
       (_) {},
     );
 
-    expect(find.text('코멘트를 남겨보세요 (선택)'), findsOneWidget);
+    expect(find.text('평점을 남겨주세요'), findsOneWidget);
+    expect(find.text('코멘트 (선택, 최대 500자)'), findsOneWidget);
+    expect(find.text('이 영화의 인상적인 장면은...'), findsOneWidget);
+    // 서버 score는 1~5 필수라 0점으로 되돌리는 링크는 두지 않습니다.
+    expect(find.text('다시 선택하기'), findsNothing);
+    // 취소·확인 버튼 높이 48
+    final confirmBox = find
+        .ancestor(of: find.text('확인'), matching: find.byType(SizedBox))
+        .first;
+    expect(tester.getSize(confirmBox).height, 48);
+
     await tester.enterText(find.byType(TextField), '좋았어요');
     await tester.pump();
     expect(_button(tester, '확인').onPressed, isNull);
 
     await _tapStarLeft(tester, 2);
     expect(_button(tester, '확인').onPressed, isNotNull);
-
-    await tester.tap(find.text('다시 선택하기'));
-    await tester.pumpAndSettle();
-    expect(_button(tester, '확인').onPressed, isNull);
   });
 
   testWidgets('확인 — 앞뒤 공백을 뺀 코멘트를 전달하고 true로 닫힌다, 빈 코멘트는 null', (tester) async {

@@ -65,6 +65,32 @@ class AppTheme {
     fontWeight: FontWeight.w700,
   );
 
+  /// 평점 Dialog 코멘트 라벨 — Manrope 700 / 13 (W7-01)
+  static const TextStyle commentLabel = TextStyle(
+    fontSize: 13,
+    height: 18 / 13,
+    letterSpacing: 0,
+    fontWeight: FontWeight.w700,
+    color: AppColors.onSurfaceVariant,
+  );
+
+  /// 평점 Dialog 코멘트 입력·힌트 — Manrope 400 / 13 (W7-01)
+  static const TextStyle commentInput = TextStyle(
+    fontSize: 13,
+    height: 18 / 13,
+    letterSpacing: 0,
+    fontWeight: FontWeight.w400,
+    color: AppColors.dialogTitle,
+  );
+
+  /// 확인 Dialog 안내 문구 — Manrope 400 / 14, 줄 19, #655F6C (W5-01, W7-REQ)
+  static const TextStyle dialogBody = TextStyle(
+    fontSize: 14,
+    height: 19 / 14,
+    fontWeight: FontWeight.w400,
+    color: AppColors.retryDialogBody,
+  );
+
   /// 평점 Dialog 다시 선택하기 — Manrope 700 / 14 / 100%
   static const TextStyle dialogTextAction = TextStyle(
     fontSize: 14,

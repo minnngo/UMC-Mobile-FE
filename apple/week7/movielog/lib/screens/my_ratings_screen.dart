@@ -8,7 +8,7 @@ import '../theme/app_theme.dart';
 import '../view_models/my_ratings_view_model.dart';
 import '../widgets/common_app_bar.dart';
 import '../widgets/movie_list_states.dart';
-import '../widgets/movielog_button.dart';
+import '../widgets/dialog_action_button.dart';
 import '../widgets/rating_dialog.dart';
 import '../widgets/tmdb_poster_image.dart';
 
@@ -129,7 +129,7 @@ class _RatingCard extends StatelessWidget {
 
     final hasActions = onEdit != null || onDelete != null;
 
-    final card = Container(
+    return Container(
       // Container는 테두리 2를 안쪽 여백에 더하므로 14 + 2 = 바깥에서 16
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -152,15 +152,11 @@ class _RatingCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Padding(
-                    // 오른쪽 위 수정·삭제 버튼과 제목이 겹치지 않게 비워 둡니다.
-                    padding: EdgeInsets.only(right: hasActions ? 72 : 0),
-                    child: Text(
-                      movie?.title ?? '영화 #${rating.movieId}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTheme.ratingCardTitle,
-                    ),
+                  Text(
+                    movie?.title ?? '영화 #${rating.movieId}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTheme.ratingCardTitle,
                   ),
                   const SizedBox(height: 10),
                   Text(
@@ -185,48 +181,72 @@ class _RatingCard extends StatelessWidget {
               ),
             ),
           ),
+          if (hasActions) ...[
+            const SizedBox(width: 8),
+            // 수정·삭제 (W7-REQ) — 카드 안쪽 위에서 9, 오른쪽에서 1, 버튼 사이 8
+            Padding(
+              padding: const EdgeInsets.only(top: 9, right: 1),
+              child: Column(
+                children: [
+                  _CardActionButton(
+                    label: '수정',
+                    backgroundColor: AppColors.ratingEditButton,
+                    foregroundColor: AppColors.primary,
+                    onPressed: onEdit,
+                  ),
+                  const SizedBox(height: 8),
+                  _CardActionButton(
+                    label: '삭제',
+                    backgroundColor: AppColors.ratingDeleteButton,
+                    foregroundColor: AppColors.error,
+                    onPressed: onDelete,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
-    );
-
-    if (!hasActions) return card;
-    // 카드 크기(W6-02)는 그대로 두고 오른쪽 위에 버튼을 겹쳐 둡니다.
-    return Stack(
-      children: [
-        card,
-        Positioned(
-          top: 6,
-          right: 6,
-          child: Row(
-            children: [
-              _CardActionButton(label: '수정', onPressed: onEdit),
-              _CardActionButton(label: '삭제', onPressed: onDelete),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
 
-/// 평점 카드 오른쪽 위의 작은 글자 버튼 (수정 / 삭제)
+/// 평점 카드 수정·삭제 버튼 — 63 x 35, 글자 Manrope 700 / 13 / 100% 가운데 (W7-REQ)
+/// - 수정: 배경 #F0EAF8, 글자 #6750A4
+/// - 삭제: 배경 #FFF2F0, 글자 #B3261E
 class _CardActionButton extends StatelessWidget {
-  const _CardActionButton({required this.label, required this.onPressed});
+  const _CardActionButton({
+    required this.label,
+    required this.backgroundColor,
+    required this.foregroundColor,
+    required this.onPressed,
+  });
 
   final String label;
+  final Color backgroundColor;
+  final Color foregroundColor;
   final VoidCallback? onPressed;
+
+  static const Size size = Size(63, 35);
 
   @override
   Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: onPressed,
-      style: TextButton.styleFrom(
-        minimumSize: const Size(36, 32),
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        textStyle: AppTheme.ratingCardScore,
+    return SizedBox.fromSize(
+      size: size,
+      child: TextButton(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(
+          backgroundColor: backgroundColor,
+          foregroundColor: foregroundColor,
+          minimumSize: size,
+          padding: EdgeInsets.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          textStyle: AppTheme.movieLogButton,
+          // 모서리 반경은 Figma 수치가 없어 시안 비율로 추정했습니다.
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        child: Text(label),
       ),
-      child: Text(label),
     );
   }
 }
@@ -286,7 +306,7 @@ void _showSavedMessage(
     );
 }
 
-/// 평점 삭제 확인 Dialog (W7-04)
+/// 평점 삭제 확인 Dialog (W7-REQ 평점 삭제 확인)
 ///
 /// 삭제 요청 중에는 버튼 로딩과 [PopScope]로 Dialog가 닫히지 않게 합니다.
 /// 실패하면 닫지 않고 서버 문구를 보여줘 다시 시도하거나 취소할 수 있게 둡니다.
@@ -329,53 +349,72 @@ class _DeleteRatingDialogState extends State<_DeleteRatingDialog> {
 
     return PopScope(
       canPop: !_isDeleting,
-      child: AlertDialog(
-        backgroundColor: colors.surface,
+      // W5-01 재시도 Dialog 틀 재사용 — 흰 배경, 반경 28, 화면 좌우 32 (W7-REQ)
+      child: Dialog(
+        backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
-        title: const Text(
-          '평점을 삭제할까요?',
-          textAlign: TextAlign.center,
-          style: AppTheme.dialogTitle,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('삭제한 평점은 복구할 수 없습니다.', textAlign: TextAlign.center),
-            if (_errorText != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _errorText!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: colors.error, fontSize: 13),
-              ),
-            ],
-          ],
-        ),
-        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-        actions: [
-          Row(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 32),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(26, 40, 26, 36),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: MovieLogButton(
-                  label: '취소',
-                  width: double.infinity,
-                  onPressed: _isDeleting
-                      ? null
-                      : () => Navigator.pop(context, false),
+              // 제목 — 높이 27, Manrope 700 / 20, #25232A
+              const SizedBox(
+                height: 27,
+                child: Center(
+                  child: Text(
+                    '평점을 삭제할까요?',
+                    textAlign: TextAlign.center,
+                    style: AppTheme.dialogTitle,
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: MovieLogButton(
-                  label: '삭제',
-                  width: double.infinity,
-                  isLoading: _isDeleting,
-                  onPressed: _isDeleting ? null : _onConfirm,
+              const SizedBox(height: 13),
+              const Text(
+                '삭제한 평점은 복구할 수 없습니다.',
+                textAlign: TextAlign.center,
+                style: AppTheme.dialogBody,
+              ),
+              if (_errorText != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _errorText!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: colors.error, fontSize: 13),
                 ),
+              ],
+              const SizedBox(height: 44),
+              // 버튼 — 높이 44, 반경 8, 간격 24 / 취소 #F4F0FA, 삭제 #6750A4
+              Row(
+                children: [
+                  Expanded(
+                    child: DialogActionButton(
+                      label: '취소',
+                      primary: false,
+                      height: 44,
+                      borderRadius: 8,
+                      onPressed: _isDeleting
+                          ? null
+                          : () => Navigator.pop(context, false),
+                    ),
+                  ),
+                  const SizedBox(width: 24),
+                  Expanded(
+                    child: DialogActionButton(
+                      label: '삭제',
+                      height: 44,
+                      borderRadius: 8,
+                      isLoading: _isDeleting,
+                      onPressed: _onConfirm,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }

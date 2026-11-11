@@ -121,6 +121,15 @@ class AppColors {
   /// 평점 카드 테두리 (W6-02)
   static const Color ratingCardBorder = Color(0xFFD9D3E1);
 
+  /// 평점 카드 수정 버튼 배경 (W7-REQ)
+  static const Color ratingEditButton = Color(0xFFF0EAF8);
+
+  /// 평점 카드 삭제 버튼 배경 (W7-REQ) — 글자는 [error] #B3261E
+  static const Color ratingDeleteButton = Color(0xFFFFF2F0);
+
+  /// 평점 Dialog 코멘트 입력칸 배경 (W7-01) — Figma 수치가 없어 시안 색으로 추정
+  static const Color commentFieldBackground = Color(0xFFF9F7FC);
+
   /// 마이페이지 내가 등록한 평점 카드 배경 (W6-ENTRY)
   static const Color entryCardBackground = Color(0xFFFFFFFF);
 

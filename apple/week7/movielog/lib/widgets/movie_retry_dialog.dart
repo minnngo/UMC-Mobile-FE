@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
+import 'dialog_action_button.dart';
 
 /// W5-01 영화 목록 요청 실패 재시도 Dialog (Challenge)
 ///
@@ -13,13 +14,6 @@ class MovieRetryDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-
-    // 버튼 글자 — Manrope 700 / 15
-    const buttonTextStyle = TextStyle(
-      fontSize: 15,
-      height: 20 / 15,
-      fontWeight: FontWeight.w700,
-    );
 
     return Dialog(
       backgroundColor: Colors.white,
@@ -75,21 +69,17 @@ class MovieRetryDialog extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: _DialogButton(
+                  // 버튼 글자 — Manrope 700 / 15
+                  child: DialogActionButton(
                     label: '취소',
-                    backgroundColor: AppColors.retryCancelButton,
-                    foregroundColor: colors.primary,
-                    textStyle: buttonTextStyle,
+                    primary: false,
                     onPressed: () => Navigator.of(context).pop(false),
                   ),
                 ),
                 const SizedBox(width: 22),
                 Expanded(
-                  child: _DialogButton(
+                  child: DialogActionButton(
                     label: '다시 시도',
-                    backgroundColor: colors.primary,
-                    foregroundColor: colors.onPrimary,
-                    textStyle: buttonTextStyle,
                     onPressed: () => Navigator.of(context).pop(true),
                   ),
                 ),
@@ -97,41 +87,6 @@ class MovieRetryDialog extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// Dialog 버튼 하나 — 높이 52, 양끝이 둥근 pill
-class _DialogButton extends StatelessWidget {
-  const _DialogButton({
-    required this.label,
-    required this.backgroundColor,
-    required this.foregroundColor,
-    required this.textStyle,
-    required this.onPressed,
-  });
-
-  final String label;
-  final Color backgroundColor;
-  final Color foregroundColor;
-  final TextStyle textStyle;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 52,
-      child: FilledButton(
-        style: FilledButton.styleFrom(
-          backgroundColor: backgroundColor,
-          foregroundColor: foregroundColor,
-          shape: const StadiumBorder(),
-          padding: EdgeInsets.zero,
-          textStyle: textStyle,
-        ),
-        onPressed: onPressed,
-        child: Text(label),
       ),
     );
   }

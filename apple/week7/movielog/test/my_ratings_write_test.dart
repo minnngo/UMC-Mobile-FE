@@ -158,10 +158,29 @@ void main() {
       expect(find.text('삭제'), findsNothing);
     });
 
-    testWidgets('본인 목록이면 카드마다 수정·삭제 버튼을 그린다', (tester) async {
+    testWidgets('본인 목록이면 카드마다 수정·삭제 버튼을 그린다 — W7-REQ 위치·크기', (tester) async {
       await pump(tester, _serverWithTwo());
       expect(find.text('수정'), findsNWidgets(2));
       expect(find.text('삭제'), findsNWidgets(2));
+
+      Finder box(String label) => find
+          .ancestor(of: find.text(label).first, matching: find.byType(SizedBox))
+          .first;
+      // 첫 카드: 수정 63 x 35 (left 290, top 121), 삭제 (left 290, top 164)
+      expect(tester.getSize(box('수정')), const Size(63, 35));
+      expect(tester.getTopLeft(box('수정')), const Offset(290, 121));
+      expect(tester.getSize(box('삭제')), const Size(63, 35));
+      expect(tester.getTopLeft(box('삭제')), const Offset(290, 164));
+      // 글자 24 x 18 영역 가운데 — 글자 중심이 버튼 중심
+      expect(
+        tester.getCenter(find.text('수정').first),
+        tester.getCenter(box('수정')),
+      );
+      // 카드 크기(W6-02 350 x 156)는 그대로
+      final card = find
+          .ancestor(of: find.text('별빛 아래 우리'), matching: find.byType(Container))
+          .last;
+      expect(tester.getSize(card), const Size(350, 156));
     });
 
     testWidgets('수정을 누르면 기존 별점·코멘트가 채워진 Dialog, 저장하면 다시 조회해 반영', (
@@ -231,10 +250,7 @@ void main() {
       await tester.tap(find.text('삭제'));
       await tester.pumpAndSettle();
       await tester.tap(
-        find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.text('삭제'),
-        ),
+        find.descendant(of: find.byType(Dialog), matching: find.text('삭제')),
       );
       await tester.pumpAndSettle();
 
@@ -242,7 +258,7 @@ void main() {
         'DELETE /v6/members/42/ratings/3',
         'GET /v6/members/42/ratings',
       ]);
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(Dialog), findsNothing);
       expect(find.text('아직 등록된 평점이 없습니다.'), findsOneWidget);
       expect(find.text('평점을 삭제했습니다.'), findsOneWidget);
     });
@@ -261,14 +277,11 @@ void main() {
       await tester.tap(find.text('삭제'));
       await tester.pumpAndSettle();
       await tester.tap(
-        find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.text('삭제'),
-        ),
+        find.descendant(of: find.byType(Dialog), matching: find.text('삭제')),
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(Dialog), findsOneWidget);
       expect(find.text('본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.'), findsOneWidget);
     });
 
@@ -280,15 +293,12 @@ void main() {
       await tester.tap(find.text('삭제').first);
       await tester.pumpAndSettle();
       await tester.tap(
-        find.descendant(
-          of: find.byType(AlertDialog),
-          matching: find.text('삭제'),
-        ),
+        find.descendant(of: find.byType(Dialog), matching: find.text('삭제')),
       );
       await tester.pumpAndSettle();
 
       // 삭제는 성공 — Dialog는 닫히고 목록 자리에 재조회 안내
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(Dialog), findsNothing);
       expect(
         find.text('저장은 완료됐지만 목록을 불러오지 못했습니다. 조회만 다시 시도해 주세요.'),
         findsOneWidget,
