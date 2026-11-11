@@ -19,7 +19,7 @@ void main() {
         requests: requests,
       ),
       fakeTmdbService(),
-      sampleMemberId,
+      1,
     );
 
     await viewModel.load();
@@ -39,7 +39,7 @@ void main() {
     final viewModel = MyRatingsViewModel(
       fakeRatingApiService(gate: gate.future),
       fakeTmdbService(),
-      sampleMemberId,
+      1,
     );
 
     final pending = viewModel.load();
@@ -54,7 +54,7 @@ void main() {
     final viewModel = MyRatingsViewModel(
       fakeRatingApiService(),
       fakeTmdbService(),
-      sampleMemberId,
+      1,
     );
 
     await viewModel.load();
@@ -71,11 +71,7 @@ void main() {
     };
 
     for (final MapEntry(key: service, value: message) in cases.entries) {
-      final viewModel = MyRatingsViewModel(
-        service,
-        fakeTmdbService(),
-        sampleMemberId,
-      );
+      final viewModel = MyRatingsViewModel(service, fakeTmdbService(), 1);
       await viewModel.load();
 
       expect(viewModel.status, MyRatingsLoadStatus.error);
@@ -92,7 +88,7 @@ void main() {
         ],
       ),
       fakeTmdbService(),
-      sampleMemberId,
+      1,
     );
 
     await viewModel.load();
@@ -115,7 +111,7 @@ void main() {
         ],
       ),
       fakeTmdbService(requests: tmdbRequests),
-      sampleMemberId,
+      1,
     );
 
     await viewModel.load();
@@ -135,7 +131,7 @@ void main() {
     final viewModel = MyRatingsViewModel(
       fakeRatingApiService(ratings: [fakeRatingJson(movieId: 1)]),
       fakeTmdbService(fail: () => tmdbDown, requests: tmdbRequests),
-      sampleMemberId,
+      1,
     );
 
     await viewModel.load();
@@ -157,7 +153,7 @@ void main() {
         gate: gate.future,
       ),
       fakeTmdbService(),
-      sampleMemberId,
+      1,
     );
 
     final pending = viewModel.load();

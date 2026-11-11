@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:movielog/data/models/create_member_request.dart';
 import 'package:movielog/view_models/sign_up_view_model.dart';
 
 import 'fake_sign_up.dart';
@@ -164,6 +165,84 @@ void main() {
       viewModel.onEmailChanged('other@umc.com');
       expect(viewModel.nicknameCheckStatus, CheckStatus.duplicated);
       expect(viewModel.emailCheckStatus, CheckStatus.idle);
+    });
+  });
+
+  group('회원가입 제출', () {
+    const request = CreateMemberRequest(
+      email: 'movie@umc.com',
+      password: 'Password1!',
+      nickname: '무비러버',
+    );
+
+    test('201이면 result의 memberId를 createdMemberId에 담는다', () async {
+      final viewModel = SignUpViewModel(fakeSignUpService(memberId: 77));
+
+      await viewModel.submit(request);
+
+      expect(viewModel.submitStatus, SubmitStatus.success);
+      expect(viewModel.createdMemberId, 77);
+      expect(viewModel.snackbarMessage, isNull);
+    });
+
+    test('제출 중에는 submitting이고, 다시 눌러도 요청을 한 번만 보낸다', () async {
+      final gate = Completer<void>();
+      final bodies = <Object?>[];
+      final viewModel = SignUpViewModel(
+        fakeSignUpService(signUpGate: gate.future, bodies: bodies),
+      );
+
+      final first = viewModel.submit(request);
+      expect(viewModel.isSubmitting, isTrue);
+      await viewModel.submit(request);
+      gate.complete();
+      await first;
+
+      expect(bodies, hasLength(1));
+      expect(viewModel.submitStatus, SubmitStatus.success);
+    });
+
+    test('400 비밀번호 형식 위반은 비밀번호 칸 오류, 입력을 바꾸면 사라진다', () async {
+      const message = '비밀번호는 대문자/소문자/숫자/특수문자를 포함한 8자 이상이어야 합니다.';
+      final viewModel = SignUpViewModel(
+        fakeSignUpService(
+          signUpStatus: 400,
+          signUpCode: 'COMMON400',
+          signUpMessage: message,
+        ),
+      );
+
+      await viewModel.submit(request);
+
+      expect(viewModel.submitStatus, SubmitStatus.error);
+      expect(viewModel.passwordErrorText, message);
+      expect(viewModel.snackbarMessage, isNull);
+      expect(viewModel.createdMemberId, isNull);
+
+      viewModel.onPasswordChanged();
+      expect(viewModel.passwordErrorText, isNull);
+    });
+
+    test('409 최종 중복은 서버 message를 Snackbar 문구로 둔다', () async {
+      final viewModel = SignUpViewModel(
+        fakeSignUpService(signUpStatus: 409, signUpMessage: '이미 사용 중인 닉네임입니다.'),
+      );
+
+      await viewModel.submit(request);
+
+      expect(viewModel.submitStatus, SubmitStatus.error);
+      expect(viewModel.snackbarMessage, '이미 사용 중인 닉네임입니다.');
+      expect(viewModel.passwordErrorText, isNull);
+    });
+
+    test('201인데 result가 null이면 가입 완료로 표시하지 않는다', () async {
+      final viewModel = SignUpViewModel(fakeSignUpService(signUpResult: false));
+
+      await viewModel.submit(request);
+
+      expect(viewModel.submitStatus, SubmitStatus.error);
+      expect(viewModel.createdMemberId, isNull);
+      expect(viewModel.snackbarMessage, contains('가입 결과를 확인하지 못했습니다'));
     });
   });
 }

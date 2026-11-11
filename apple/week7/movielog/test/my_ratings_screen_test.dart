@@ -17,8 +17,7 @@ import 'fake_tmdb.dart';
 Widget _app(RatingApiService service) => MaterialApp(
   theme: AppTheme.light,
   home: ChangeNotifierProvider<MyRatingsViewModel>(
-    create: (_) =>
-        MyRatingsViewModel(service, fakeTmdbService(), sampleMemberId)..load(),
+    create: (_) => MyRatingsViewModel(service, fakeTmdbService(), 1)..load(),
     child: const MyRatingsScreen(),
   ),
 );

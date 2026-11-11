@@ -3,8 +3,10 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../data/models/create_member_request.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
+import '../view_models/learning_member_session.dart';
 import '../view_models/sign_up_view_model.dart';
 import '../widgets/common_app_bar.dart';
 import '../widgets/movielog_button.dart';
@@ -26,6 +28,12 @@ typedef FieldValidator = String? Function(String? value);
 ///
 /// 6주차 — 형식 검사는 validator가, 서버 중복 여부는 [SignUpViewModel]이 담당합니다.
 /// 두 결과를 함께 보여주고, 닉네임·이메일이 모두 사용 가능해야 가입하기가 켜집니다.
+///
+/// 7주차 — 가입하기가 POST /v6/members를 보냅니다.
+/// - 성공: 응답의 memberId를 [LearningMemberSession]에 저장하고 홈으로 이동
+/// - 400 비밀번호 형식: 비밀번호 입력칸 errorText
+/// - 409 이메일·닉네임 중복(최종 판정) 등: 서버 message를 Snackbar로
+/// - 제출 중: 버튼 로딩, 입력·뒤로가기 막기
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -67,6 +75,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final text = value?.trim() ?? '';
     if (text.isEmpty) return '닉네임을 입력해주세요.';
     if (text.length < 2) return '닉네임은 2자 이상이어야 합니다.';
+    if (text.length > 12) return '닉네임은 12자 이하여야 합니다.';
     return null;
   }
 
@@ -79,16 +88,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
+  /// 서버 규칙과 같게 검사합니다: 8자 이상 + 소문자·대문자·숫자·특수문자(!@#$%^&*) 각 1개 이상.
+  /// 비밀번호는 trim()하지 않으므로 앞뒤 공백은 여기서 명확히 막습니다.
   String? _validatePassword(String? value) {
     final text = value ?? '';
     if (text.isEmpty) return '비밀번호를 입력해주세요.';
+    if (text.trim() != text) return '비밀번호 앞뒤에 공백을 넣을 수 없습니다.';
     if (text.length < 8) return '비밀번호는 8자 이상이어야 합니다.';
+    if (!RegExp('[a-z]').hasMatch(text) ||
+        !RegExp('[A-Z]').hasMatch(text) ||
+        !RegExp('[0-9]').hasMatch(text) ||
+        !RegExp(r'[!@#$%^&*]').hasMatch(text)) {
+      return '대문자·소문자·숫자·특수문자(!@#\$%^&*)를 모두 포함해야 합니다.';
+    }
     return null;
   }
 
   /// 세 입력이 모두 유효하고, 닉네임·이메일 중복 확인을 통과하고,
-  /// 약관에 동의했을 때만 가입하기 버튼을 켭니다.
+  /// 약관에 동의했고, 제출 중이 아닐 때만 가입하기 버튼을 켭니다.
   bool _canSubmit(SignUpViewModel viewModel) =>
+      !viewModel.isSubmitting &&
       _validateNickname(_nicknameController.text) == null &&
       _validateEmail(_emailController.text) == null &&
       _validatePassword(_passwordController.text) == null &&
@@ -96,21 +115,60 @@ class _RegisterScreenState extends State<RegisterScreen> {
       viewModel.emailCheckStatus == CheckStatus.available &&
       _agreedToTerms;
 
-  /// 가입하기 — Form 전체를 다시 검증한 뒤 홈으로 이동합니다.
-  /// v5에는 회원가입 API가 없어 실제 계정은 만들지 않습니다.
-  /// go로 이동해 회원가입 화면을 스택에서 빼므로 홈에서 뒤로 돌아오지 않습니다.
-  void _submit() {
+  /// 가입하기 — Form 전체를 다시 검증한 뒤 POST /v6/members를 보냅니다.
+  ///
+  /// 성공하면 memberId를 학습용 세션에 저장하고 go로 홈에 이동해
+  /// 회원가입 화면을 스택에서 빼므로 홈에서 뒤로 돌아오지 않습니다.
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-    context.go('/home');
+
+    final viewModel = context.read<SignUpViewModel>();
+    await viewModel.submit(
+      CreateMemberRequest(
+        email: _emailController.text,
+        password: _passwordController.text,
+        nickname: _nicknameController.text,
+      ),
+    );
+    // await 사이 화면이 사라졌을 수 있으므로 context를 쓰기 전에 다시 확인합니다.
+    if (!mounted) return;
+
+    final memberId = viewModel.createdMemberId;
+    if (viewModel.submitStatus == SubmitStatus.success && memberId != null) {
+      context.read<LearningMemberSession>().setMemberId(memberId);
+      // ScaffoldMessenger는 앱 전체에 하나라 홈으로 이동해도 Snackbar가 남습니다.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('회원가입이 완료되었습니다. (학습용 회원 #$memberId)'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      context.go('/home');
+      return;
+    }
+
+    final message = viewModel.snackbarMessage;
+    if (message != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+        );
+    }
   }
 
   /// 시작 화면에서 go로 들어와 돌아갈 화면이 쌓여 있지 않으므로 시작 화면으로 go합니다.
-  void _backToStart() => context.go('/start');
+  /// 제출 중에는 요청 결과를 반영하지 못한 채 사라지지 않도록 이동하지 않습니다.
+  void _backToStart() {
+    if (context.read<SignUpViewModel>().isSubmitting) return;
+    context.go('/start');
+  }
 
   @override
   Widget build(BuildContext context) {
     // 시스템 뒤로가기(Android 뒤로 버튼 등)도 헤더 화살표와 같이 시작 화면으로 보냅니다.
+    // canPop은 항상 false라 스와이프 백도 막히고, 제출 중에는 _backToStart가 이동하지 않습니다.
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -151,6 +209,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             const SizedBox(height: 32),
                             _SignupFields(
                               viewModel: viewModel,
+                              // 제출 중에는 보낸 값과 화면 값이 달라지지 않게 입력을 막습니다.
+                              readOnly: viewModel.isSubmitting,
                               nicknameController: _nicknameController,
                               emailController: _emailController,
                               passwordController: _passwordController,
@@ -171,6 +231,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 alignment: Alignment.bottomCenter,
                                 child: _SignupFooter(
                                   agreedToTerms: _agreedToTerms,
+                                  isSubmitting: viewModel.isSubmitting,
                                   onAgreedChanged: (value) =>
                                       setState(() => _agreedToTerms = value),
                                   onSubmit: _canSubmit(viewModel)
@@ -227,6 +288,7 @@ class _WelcomeMessage extends StatelessWidget {
 class _SignupFields extends StatelessWidget {
   const _SignupFields({
     required this.viewModel,
+    required this.readOnly,
     required this.nicknameController,
     required this.emailController,
     required this.passwordController,
@@ -239,6 +301,7 @@ class _SignupFields extends StatelessWidget {
   });
 
   final SignUpViewModel viewModel;
+  final bool readOnly;
   final TextEditingController nicknameController;
   final TextEditingController emailController;
   final TextEditingController passwordController;
@@ -284,12 +347,14 @@ class _SignupFields extends StatelessWidget {
             availableText: '사용 가능한 닉네임입니다.',
             // 형식이 맞고 ViewModel이 허락할 때만 중복 확인을 누를 수 있습니다.
             onCheck:
-                validateNickname(nicknameController.text) == null &&
+                !readOnly &&
+                    validateNickname(nicknameController.text) == null &&
                     viewModel.canCheckNickname
                 ? () => viewModel.checkNickname(nicknameController.text)
                 : null,
             field: TextFormField(
               controller: nicknameController,
+              readOnly: readOnly,
               validator: validateNickname,
               onChanged: (value) {
                 viewModel.onNicknameChanged(value);
@@ -319,12 +384,14 @@ class _SignupFields extends StatelessWidget {
             checkingText: '이메일 사용 가능 여부를 확인 중입니다.',
             availableText: '사용 가능한 이메일입니다.',
             onCheck:
-                validateEmail(emailController.text) == null &&
+                !readOnly &&
+                    validateEmail(emailController.text) == null &&
                     viewModel.canCheckEmail
                 ? () => viewModel.checkEmail(emailController.text)
                 : null,
             field: TextFormField(
               controller: emailController,
+              readOnly: readOnly,
               validator: validateEmail,
               onChanged: (value) {
                 viewModel.onEmailChanged(value);
@@ -353,17 +420,25 @@ class _SignupFields extends StatelessWidget {
           child: TextFormField(
             controller: passwordController,
             focusNode: passwordFocusNode,
+            readOnly: readOnly,
             validator: validatePassword,
-            onChanged: (_) => onChanged(),
+            onChanged: (_) {
+              viewModel.onPasswordChanged();
+              onChanged();
+            },
             obscureText: true,
             textInputAction: TextInputAction.done,
             onFieldSubmitted: (_) => onPasswordSubmitted?.call(),
             style: textTheme.bodyLarge,
             decoration: InputDecoration(
               hintText: '비밀번호를 입력해주세요',
+              // 로컬 validator를 통과해도 서버(400)가 거부한 값이면 계속 에러로 보입니다.
+              errorText: viewModel.passwordErrorText,
+              errorMaxLines: 2,
               suffixIcon: _statusIcon(
                 passwordController.text,
                 validatePassword,
+                serverErrorText: viewModel.passwordErrorText,
               ),
             ),
           ),
@@ -500,11 +575,15 @@ class _StatusIcon extends StatelessWidget {
 class _SignupFooter extends StatelessWidget {
   const _SignupFooter({
     required this.agreedToTerms,
+    required this.isSubmitting,
     required this.onAgreedChanged,
     required this.onSubmit,
   });
 
   final bool agreedToTerms;
+
+  /// true면 가입하기 버튼에 로딩을 표시합니다.
+  final bool isSubmitting;
   final ValueChanged<bool> onAgreedChanged;
 
   /// null이면 가입하기 버튼이 비활성 상태로 그려집니다.
@@ -524,7 +603,7 @@ class _SignupFooter extends StatelessWidget {
         children: [
           // 필수 약관 — 체크박스 26x26 + 텍스트(left 32)
           InkWell(
-            onTap: () => onAgreedChanged(!agreedToTerms),
+            onTap: isSubmitting ? null : () => onAgreedChanged(!agreedToTerms),
             borderRadius: BorderRadius.circular(AppTheme.checkboxRadius),
             child: Row(
               children: [
@@ -533,7 +612,9 @@ class _SignupFooter extends StatelessWidget {
                   height: AppTheme.checkboxSize,
                   child: Checkbox(
                     value: agreedToTerms,
-                    onChanged: (value) => onAgreedChanged(value ?? false),
+                    onChanged: isSubmitting
+                        ? null
+                        : (value) => onAgreedChanged(value ?? false),
                   ),
                 ),
                 const SizedBox(width: 32 - AppTheme.checkboxSize),
@@ -548,6 +629,7 @@ class _SignupFooter extends StatelessWidget {
             child: MovieLogButton(
               label: '가입하기',
               width: double.infinity,
+              isLoading: isSubmitting,
               onPressed: onSubmit,
             ),
           ),

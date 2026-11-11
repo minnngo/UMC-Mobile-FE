@@ -17,8 +17,7 @@ import '../widgets/tmdb_poster_image.dart';
 /// - 빈 목록: [_MyRatingsEmpty]
 /// - 성공: 평점 카드 목록 (W6-02) — TMDB 영화를 못 찾은 평점도 placeholder로 남깁니다.
 ///
-/// 로그인이 없어 학습용 memberId 1의 샘플 평점을 읽기만 합니다.
-/// 현재 사용자의 평점이라고 안내하거나 수정·삭제 버튼을 두지 않습니다.
+/// 회원가입으로 얻은 학습용 memberId의 평점을 읽습니다. (로그인 인증은 아님)
 /// 하단 NavigationBar 없이 root Navigator 위에 열립니다.
 class MyRatingsScreen extends StatelessWidget {
   const MyRatingsScreen({super.key});
@@ -183,6 +182,24 @@ class _Poster extends StatelessWidget {
       posterPath: path,
       width: size.width,
       height: size.height,
+    );
+  }
+}
+
+/// 학습용 회원가입 전에 "내가 등록한 평점"에 들어왔을 때의 안내 화면입니다.
+///
+/// 다른 회원의 path(6주차 고정 ID 1)로 요청하지 않도록 API를 호출하지 않습니다.
+class MyRatingsSignUpRequired extends StatelessWidget {
+  const MyRatingsSignUpRequired({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      appBar: CommonAppBar(
+        title: '내가 등록한 평점',
+        titleStyle: AppTheme.appBarTitleBold,
+      ),
+      body: Center(child: Text('학습용 회원가입이 필요합니다.')),
     );
   }
 }

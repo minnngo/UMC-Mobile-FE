@@ -1,6 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
+import '../data/models/create_member_request.dart';
 import '../data/services/sign_up_service.dart';
+import 'submit_status.dart';
+
+export 'submit_status.dart';
 
 /// 중복 확인 한 칸의 상태입니다. 버튼 활성화와 Form 에러 문구가 모두 이 값에서 나옵니다.
 enum CheckStatus {
@@ -20,13 +25,16 @@ enum CheckStatus {
   error,
 }
 
-/// 회원가입 화면의 닉네임·이메일 중복 확인 상태를 관리합니다.
+/// 회원가입 화면의 닉네임·이메일 중복 확인과 가입 제출 상태를 관리합니다.
 ///
 /// 두 입력란은 상태·요청 버전·현재 입력값을 따로 관리해 결과가 서로 섞이지 않게 합니다.
 /// 입력이 바뀌면 기다리던 이전 응답은 무시합니다.
 ///
 /// 이전에 중복으로 확인한 값을 다시 입력하면 API 없이 바로 중복으로 표시합니다.
 /// 서버 상태는 그 사이 바뀔 수 있으므로 최종 기준은 회원가입 POST의 409입니다.
+///
+/// 7주차 — [submit]이 POST /v6/members를 보내고, 성공하면 [createdMemberId]에
+/// 응답 result의 memberId를 담습니다. 세션 저장은 화면이 합니다.
 class SignUpViewModel extends ChangeNotifier {
   SignUpViewModel(this._service);
 
@@ -162,6 +170,62 @@ class SignUpViewModel extends ChangeNotifier {
       emailErrorText = _checkFailedText;
     }
     notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // 회원가입 제출 (POST /v6/members)
+  // ---------------------------------------------------------------------------
+
+  SubmitStatus submitStatus = SubmitStatus.idle;
+
+  /// 가입 성공 응답의 result에서 읽은 실제 memberId
+  int? createdMemberId;
+
+  /// 400 중 비밀번호 형식 위반 — 비밀번호 입력칸에 붙이는 필드 단위 오류
+  String? passwordErrorText;
+
+  /// 409 중복 등 어느 입력칸에도 붙일 수 없는 화면 단위 오류 — Snackbar로 한 번 보여줍니다.
+  String? snackbarMessage;
+
+  bool get isSubmitting => submitStatus == SubmitStatus.submitting;
+
+  /// 비밀번호를 고치면 이전 서버 오류를 지웁니다.
+  void onPasswordChanged() {
+    if (passwordErrorText == null) return;
+    passwordErrorText = null;
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> submit(CreateMemberRequest request) async {
+    if (isSubmitting) return; // 중복 탭 방지
+    submitStatus = SubmitStatus.submitting;
+    createdMemberId = null;
+    passwordErrorText = null;
+    snackbarMessage = null;
+    notifyListeners();
+
+    try {
+      final response = await _service.signUp(request);
+      final id = response.result?.memberId;
+      // memberId가 없으면 가입 완료로 표시하지 않고 계약 오류로 처리합니다.
+      if (id == null) throw StateError('회원가입 결과에 memberId가 없습니다.');
+      createdMemberId = id;
+      submitStatus = SubmitStatus.success;
+    } on DioException catch (error) {
+      submitStatus = SubmitStatus.error;
+      final message = writeSignUpErrorMessage(error);
+      // 400이라도 비밀번호 문구일 때만 입력칸에 붙이고, 그 밖의 400·409는 Snackbar로 보여줍니다.
+      if (error.response?.statusCode == 400 && message.contains('비밀번호')) {
+        passwordErrorText = message;
+      } else {
+        snackbarMessage = message;
+      }
+    } catch (_) {
+      // 201은 왔지만 응답 모양이 계약과 다름 — 서버에는 이미 가입됐을 수 있습니다.
+      submitStatus = SubmitStatus.error;
+      snackbarMessage = '가입 결과를 확인하지 못했습니다. 새 요청 전에 서버 상태를 확인해 주세요.';
+    }
+    if (!_disposed) notifyListeners();
   }
 
   @override

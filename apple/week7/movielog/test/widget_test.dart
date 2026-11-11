@@ -6,6 +6,7 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 
 import 'package:movielog/app/movie_log_app.dart';
 import 'package:movielog/router/app_router.dart';
+import 'package:movielog/view_models/learning_member_session.dart';
 import 'package:movielog/widgets/movie_card.dart';
 
 import 'fake_sign_up.dart';
@@ -72,7 +73,7 @@ void main() {
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), '밍고');
     await tester.enterText(fields.at(1), 'mingo@example.com');
-    await tester.enterText(fields.at(2), 'password123');
+    await tester.enterText(fields.at(2), 'Password1!');
     await tester.ensureVisible(find.text('필수 약관에 동의합니다'));
     await tester.tap(find.text('필수 약관에 동의합니다'));
     await tester.pumpAndSettle();
@@ -92,8 +93,9 @@ void main() {
     await tester.tap(find.text('가입하기'));
     await tester.pumpAndSettle();
 
-    // 홈 도착, 뒤로 돌아갈 화면 없음
+    // 홈 도착 + 가입 완료 안내, 뒤로 돌아갈 화면 없음
     expect(find.text('오늘은 어떤\n영화를 볼까요?'), findsOneWidget);
+    expect(find.text('회원가입이 완료되었습니다. (학습용 회원 #42)'), findsOneWidget);
     expect(AppRouter.router.canPop(), isFalse);
 
     // 시스템 뒤로가기(Android 뒤로 버튼)를 눌러도 홈에 그대로 있음
@@ -618,6 +620,30 @@ void main() {
     expect(find.text('(1,245)'), findsOneWidget);
   });
 
+  testWidgets('학습용 회원가입 전에는 내가 등록한 평점을 요청하지 않고 가입 안내를 보여준다', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final requests = <String>[];
+    await tester.pumpWidget(
+      MovieLogApp(
+        tmdbMovieService: fakeTmdbService(),
+        ratingApiService: fakeRatingApiService(requests: requests),
+      ),
+    );
+    await tester.pumpAndSettle();
+    AppRouter.router.go('/my');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('내가 등록한 평점'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('학습용 회원가입이 필요합니다.'), findsOneWidget);
+    expect(requests, isEmpty);
+  });
+
   testWidgets('마이 → 내가 등록한 평점은 하단 탭 없이 열리고, 뒤로가면 마이로 돌아온다', (
     WidgetTester tester,
   ) async {
@@ -625,12 +651,15 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
+    final requests = <String>[];
     await tester.pumpWidget(
       MovieLogApp(
         tmdbMovieService: fakeTmdbService(),
         ratingApiService: fakeRatingApiService(
           ratings: [fakeRatingJson(movieId: 1)],
+          requests: requests,
         ),
+        learningMemberSession: LearningMemberSession()..setMemberId(42),
       ),
     );
     await tester.pumpAndSettle();
@@ -646,6 +675,8 @@ void main() {
     );
     expect(find.byType(NavigationBar), findsNothing);
     expect(find.text('별빛 아래 우리'), findsOneWidget);
+    // 6주차 고정 ID 1이 아니라 가입으로 얻은 memberId로 조회
+    expect(requests, ['/v6/members/42/ratings']);
 
     await tester.tap(find.byTooltip('뒤로가기'));
     await tester.pumpAndSettle();

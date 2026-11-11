@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -17,6 +17,7 @@ import '../screens/start_screen.dart';
 import '../view_models/movie_detail_view_model.dart';
 import '../view_models/movie_home_view_model.dart';
 import '../view_models/movie_list_view_model.dart';
+import '../view_models/learning_member_session.dart';
 import '../view_models/my_ratings_view_model.dart';
 import '../view_models/sign_up_view_model.dart';
 
@@ -95,18 +96,22 @@ class AppRouter {
             routes: [
               // 내가 등록한 평점 (최종 경로 /my/ratings)
               // root Navigator 위에 push해 하단 NavigationBar를 가립니다.
+              // 7주차 — 6주차 고정 ID 1 대신 회원가입으로 얻은 학습용 memberId를 씁니다.
               GoRoute(
                 path: 'ratings',
                 parentNavigatorKey: rootNavigatorKey,
-                builder: (context, state) =>
-                    ChangeNotifierProvider<MyRatingsViewModel>(
-                      create: (context) => MyRatingsViewModel(
-                        context.read<RatingApiService>(),
-                        context.read<TmdbMovieService>(),
-                        sampleMemberId, // 6주차는 학습용 ID 1입니다.
-                      )..load(),
-                      child: const MyRatingsScreen(),
-                    ),
+                builder: (context, state) {
+                  final id = context.read<LearningMemberSession>().memberId;
+                  if (id == null) return const MyRatingsSignUpRequired();
+                  return ChangeNotifierProvider<MyRatingsViewModel>(
+                    create: (context) => MyRatingsViewModel(
+                      context.read<RatingApiService>(),
+                      context.read<TmdbMovieService>(),
+                      id,
+                    )..load(),
+                    child: const MyRatingsScreen(),
+                  );
+                },
               ),
             ],
           ),

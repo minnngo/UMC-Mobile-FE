@@ -6,10 +6,6 @@ import '../data/models/tmdb_movie_detail_dto.dart';
 import '../data/services/rating_api_service.dart';
 import '../data/services/tmdb_movie_service.dart';
 
-/// "내가 등록한 평점"의 조회 대상 — 인증된 '내 계정'이 아닌 학습용 데이터입니다.
-/// 로그인이 없어 memberId 1로 고정하고, 실제 회원 식별은 JWT 주차에서 바뀝니다.
-const int sampleMemberId = 1;
-
 enum MyRatingsLoadStatus { idle, loading, success, empty, error }
 
 /// 내가 등록한 평점 화면의 상태 — 자체 서버 평점 목록에 TMDB 영화 정보를 붙입니다.
@@ -18,6 +14,9 @@ enum MyRatingsLoadStatus { idle, loading, success, empty, error }
 /// - TMDB 영화 조회가 실패해도 평점은 그대로 두고 영화 정보만 비웁니다.
 /// - 같은 movieId는 한 번만 조회해 캐시합니다. 일시적인 실패는 캐시하지 않아 다음 로딩에서 다시 시도합니다.
 /// - 화면을 벗어났거나 새 요청이 시작된 뒤 도착한 이전 응답은 무시합니다.
+///
+/// [memberId]는 회원가입으로 얻은 학습용 ID입니다(LearningMemberSession).
+/// 인증된 '내 계정'은 아니며, 실제 회원 식별은 JWT 주차에서 토큰으로 바뀝니다.
 class MyRatingsViewModel extends ChangeNotifier {
   MyRatingsViewModel(this._service, this._movieService, this.memberId);
 
